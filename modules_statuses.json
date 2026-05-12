@@ -34,5 +34,13 @@
     "PortfolioImages": true,
     "File": true,
     "Employer": true,
-    "Ticket": true
+    "Ticket": true,
+    "Grade": true,
+    "Class": true,
+    "Subject": true,
+    "Student": true,
+    "Traits": true,
+    "Skills": true,
+    "Task": true,
+    "Message": true
 }

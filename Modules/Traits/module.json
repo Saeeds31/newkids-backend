@@ -1,0 +1,11 @@
+{
+    "name": "Traits",
+    "alias": "traits",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Traits\\Providers\\TraitsServiceProvider"
+    ],
+    "files": []
+}
