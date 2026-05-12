@@ -1,31 +1,34 @@
 <?php
 
-namespace Modules\Users\Models;
+namespace App\Models;
 
-use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Modules\Addresses\Models\Address;
-use Modules\Wallet\Models\Wallet;
 use Laravel\Sanctum\HasApiTokens;
-use Modules\Cart\Models\Cart;
-use Modules\Comments\Models\Comment;
-use Modules\Employer\Models\Employer;
-use Modules\Products\Models\Product;
-
-// use Modules\Users\Database\Factories\UserFactory;
+use Modules\Class\Models\Classes;
+use Modules\Class\Models\ClassSubjectTime;
+use Modules\Message\Models\Message;
+use Modules\Student\Models\Student;
+use Modules\Subject\Models\Subject;
+use Modules\Task\Models\Task;
+use Modules\Task\Models\TaskAssignment;
+use Modules\Task\Models\TaskAssignment as ModelsTaskAssignment;
+use Modules\Task\Models\TaskResults;
 
 class User extends Authenticatable
 {
-    use HasFactory, HasApiTokens, Notifiable;
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
+
+    protected $table = 'users';
 
     protected $fillable = [
-        'full_name',
+        'first_name',
+        'last_name',
         'mobile',
         'password',
-        'national_code',
-        'birth_date',
+        'is_active',
     ];
 
     protected $hidden = [
@@ -34,59 +37,419 @@ class User extends Authenticatable
     ];
 
     protected $casts = [
-        'birth_date' => 'date',
+        'is_active' => 'boolean',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+        'deleted_at' => 'datetime',
     ];
 
+    // ============ ثابت‌ها (Constants) ============
+
+    const ROLE_ADMIN = 'admin';
+    const ROLE_SUPERVISOR = 'supervisor';
+    const ROLE_TEACHER = 'teacher';
+    const ROLE_PARENT = 'parent';
+
+    const ROLES = [
+        self::ROLE_ADMIN => 'مدیر',
+        self::ROLE_SUPERVISOR => 'ناظم',
+        self::ROLE_TEACHER => 'معلم',
+        self::ROLE_PARENT => 'والد',
+    ];
+
+    const ROLE_COLORS = [
+        self::ROLE_ADMIN => '#EF4444',     // قرمز
+        self::ROLE_SUPERVISOR => '#F59E0B', // نارنجی
+        self::ROLE_TEACHER => '#3B82F6',    // آبی
+        self::ROLE_PARENT => '#10B981',     // سبز
+    ];
+
+    // ============ ارتباطات (Relationships) ============
+
     /**
-     * Get all addresses for the user.
+     * ارتباط با تسک‌های ایجاد شده (برای مدیر و ناظم)
      */
-    public function addresses()
+    public function createdTasks()
     {
-        return $this->hasMany(Address::class);
-    }
-    public function roles()
-    {
-        return $this->belongsToMany(Role::class);
-    }
-    public function cartItems()
-    {
-        return $this->hasMany(Cart::class);
-    }
-    public function wallet()
-    {
-        return $this->hasOne(Wallet::class);
-    }
-    public function employer()
-    {
-        return $this->hasOne(Employer::class);
-    }
-    public function comments()
-    {
-        return $this->hasMany(Comment::class);
-    }
-    public function getPermissionsAttribute()
-    {
-        return $this->roles
-            ->map->permissions
-            ->flatten()
-            ->pluck('name')
-            ->unique()
-            ->values()
-            ->toArray();
+        return $this->hasMany(Task::class, 'created_by');
     }
 
-    public function hasPermission($permission)
+    /**
+     * ارتباط با انتساب‌های تسک (برای معلم)
+     * تسک‌هایی که به این معلم اختصاص داده شده
+     */
+    public function taskAssignments()
     {
-        return $this->permissions()->contains('name', $permission);
+        return $this->hasMany(TaskAssignment::class, 'teacher_id');
     }
-    public static  function dashboardReport()
+
+    /**
+     * ارتباط با تسک‌های اختصاص داده شده (از طریق task_assignments)
+     */
+    public function assignedTasks()
     {
-        return [
-            'total_users'     => self::count(),
-            'with_addresses'  => self::has('addresses')->count(),
-            'with_wallet'     => self::has('wallet')->count(),
-            'without_wallet'  => self::doesntHave('wallet')->count(),
-            'today_registered' => self::whereDate('created_at', today())->count(),
-        ];
+        return $this->belongsToMany(
+            Task::class,
+            'task_assignments',
+            'teacher_id',
+            'task_id'
+        );
+    }
+
+    /**
+     * ارتباط با زمان‌بندی کلاس‌ها (برای معلم)
+     */
+    public function classSubjectTimes()
+    {
+        return $this->hasMany(ClassSubjectTime::class, 'teacher_id');
+    }
+
+    /**
+     * ارتباط با کلاس‌هایی که معلم در آنها تدریس می‌کند
+     */
+    public function teachingClasses()
+    {
+        return $this->belongsToMany(
+            Classes::class,
+            'class_subject_times',
+            'teacher_id',
+            'class_id'
+        )->distinct();
+    }
+
+    /**
+     * ارتباط با درس‌هایی که معلم تدریس می‌کند
+     */
+    public function teachingSubjects()
+    {
+        return $this->belongsToMany(
+            Subject::class,
+            'class_subject_times',
+            'teacher_id',
+            'subject_id'
+        )->distinct();
+    }
+
+    /**
+     * ارتباط با دانش‌آموزان (برای والد)
+     */
+    public function children()
+    {
+        return $this->hasMany(Student::class, 'parent_id');
+    }
+
+    /**
+     * ارتباط با نتایج ثبت شده (برای معلم)
+     */
+    public function recordedTaskResults()
+    {
+        return $this->hasMany(TaskResults::class, 'recorded_by');
+    }
+
+    /**
+     * ارتباط با پیام‌های ارسال شده
+     */
+    public function sentMessages()
+    {
+        return $this->hasMany(Message::class, 'from_user_id');
+    }
+
+    /**
+     * ارتباط با پیام‌های دریافت شده
+     */
+    public function receivedMessages()
+    {
+        return $this->hasMany(Message::class, 'to_user_id');
+    }
+
+    /**
+     * ارتباط با انتساب‌های انجام شده (برای مدیر/ناظم)
+     */
+    public function assignedTaskAssignments()
+    {
+        return $this->hasMany(ModelsTaskAssignment::class, 'assigned_by');
+    }
+
+    // ============ متدهای کمکی (Helpers) ============
+
+    /**
+     * دریافت نام کامل کاربر
+     */
+    public function getFullNameAttribute()
+    {
+        return "{$this->first_name} {$this->last_name}";
+    }
+
+    /**
+     * دریافت نقش کاربر (از جدول roles یا فیلد role)
+     * توجه: اگر از جدول roles جداگانه استفاده می‌کنید، این متد را اصلاح کنید
+     */
+    public function getRoleAttribute()
+    {
+        // این یک متد ساده است. اگر سیستم نقش‌های پیچیده‌تری دارید، 
+        // از spatie/laravel-permission استفاده کنید
+        return $this->role ?? self::ROLE_TEACHER;
+    }
+
+    /**
+     * دریافت نقش به صورت فارسی
+     */
+    public function getRolePersianAttribute()
+    {
+        return self::ROLES[$this->role] ?? $this->role;
+    }
+
+    /**
+     * دریافت رنگ نقش
+     */
+    public function getRoleColorAttribute()
+    {
+        return self::ROLE_COLORS[$this->role] ?? '#6B7280';
+    }
+
+    /**
+     * بررسی آیا کاربر مدیر است
+     */
+    public function getIsAdminAttribute()
+    {
+        return $this->role === self::ROLE_ADMIN;
+    }
+
+    /**
+     * بررسی آیا کاربر ناظم است
+     */
+    public function getIsSupervisorAttribute()
+    {
+        return $this->role === self::ROLE_SUPERVISOR;
+    }
+
+    /**
+     * بررسی آیا کاربر معلم است
+     */
+    public function getIsTeacherAttribute()
+    {
+        return $this->role === self::ROLE_TEACHER;
+    }
+
+    /**
+     * بررسی آیا کاربر والد است
+     */
+    public function getIsParentAttribute()
+    {
+        return $this->role === self::ROLE_PARENT;
+    }
+
+    /**
+     * بررسی آیا کاربر فعال است
+     */
+    public function getIsActiveUserAttribute()
+    {
+        return $this->is_active && is_null($this->deleted_at);
+    }
+
+    /**
+     * دریافت تعداد دانش‌آموزانی که معلم برای آنها نتیجه ثبت کرده
+     */
+    public function getRecordedStudentsCountAttribute()
+    {
+        return $this->recordedTaskResults()
+            ->distinct('student_id')
+            ->count('student_id');
+    }
+
+    /**
+     * دریافت تعداد کلاس‌هایی که معلم در آنها تدریس می‌کند
+     */
+    public function getTeachingClassesCountAttribute()
+    {
+        return $this->teachingClasses()->count();
+    }
+
+    /**
+     * دریافت تعداد فرزندان (برای والد)
+     */
+    public function getChildrenCountAttribute()
+    {
+        return $this->children()->count();
+    }
+
+    /**
+     * دریافت تعداد پیام‌های خوانده نشده
+     */
+    public function getUnreadMessagesCountAttribute()
+    {
+        return $this->receivedMessages()
+            ->where('is_read', false)
+            ->count();
+    }
+
+    /**
+     * دریافت لیست کلاس‌هایی که معلم در آنها تدریس می‌کند (به همراه جزئیات)
+     */
+    public function getTeachingClassesWithDetails()
+    {
+        return $this->classSubjectTimes()
+            ->with(['class.grade', 'subject'])
+            ->orderByRaw("FIELD(day_of_week, 'Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday')")
+            ->orderBy('start_time')
+            ->get()
+            ->groupBy('class_id');
+    }
+
+    /**
+     * دریافت تسک‌های فعال برای معلم
+     */
+    public function getActiveTasksForTeacher()
+    {
+        return $this->taskAssignments()
+            ->with(['task', 'class', 'taskOccurrences' => function($q) {
+                $q->where('status', 'open')
+                  ->where('start_at', '<=', now())
+                  ->where('end_at', '>=', now());
+            }])
+            ->whereHas('taskOccurrences', function($q) {
+                $q->where('status', 'open')
+                  ->where('start_at', '<=', now())
+                  ->where('end_at', '>=', now());
+            })
+            ->get();
+    }
+
+    /**
+     * دریافت تسک‌های در انتظار برای معلم
+     */
+    public function getPendingTasksForTeacher()
+    {
+        return $this->taskAssignments()
+            ->with(['task', 'class', 'taskOccurrences' => function($q) {
+                $q->where('status', 'pending');
+            }])
+            ->whereHas('taskOccurrences', function($q) {
+                $q->where('status', 'pending');
+            })
+            ->get();
+    }
+
+    /**
+     * دریافت فرزندان یک والد به همراه نتایج اخیر
+     */
+    public function getChildrenWithRecentResults($limit = 5)
+    {
+        return $this->children()
+            ->with(['class', 'taskResults' => function($q) use ($limit) {
+                $q->with(['taskOccurrence.taskAssignment.task', 'status'])
+                  ->latest()
+                  ->limit($limit);
+            }])
+            ->get();
+    }
+
+    // ============ اسکوپ‌ها (Scopes) ============
+
+    /**
+     * اسکوپ کاربران بر اساس نقش
+     */
+    public function scopeWithRole($query, $role)
+    {
+        return $query->where('role', $role);
+    }
+
+    /**
+     * اسکوپ مدیران
+     */
+    public function scopeAdmins($query)
+    {
+        return $query->where('role', self::ROLE_ADMIN);
+    }
+
+    /**
+     * اسکوپ ناظمان
+     */
+    public function scopeSupervisors($query)
+    {
+        return $query->where('role', self::ROLE_SUPERVISOR);
+    }
+
+    /**
+     * اسکوپ معلمان
+     */
+    public function scopeTeachers($query)
+    {
+        return $query->where('role', self::ROLE_TEACHER);
+    }
+
+    /**
+     * اسکوپ والدین
+     */
+    public function scopeParents($query)
+    {
+        return $query->where('role', self::ROLE_PARENT);
+    }
+
+    /**
+     * اسکوپ کاربران فعال
+     */
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
+    /**
+     * اسکوپ کاربران غیرفعال
+     */
+    public function scopeInactive($query)
+    {
+        return $query->where('is_active', false);
+    }
+
+    /**
+     * اسکوپ جستجو بر اساس نام یا موبایل
+     */
+    public function scopeSearch($query, $searchTerm)
+    {
+        return $query->where(function($q) use ($searchTerm) {
+            $q->where('first_name', 'like', "%{$searchTerm}%")
+              ->orWhere('last_name', 'like', "%{$searchTerm}%")
+              ->orWhere('mobile', 'like', "%{$searchTerm}%");
+        });
+    }
+
+    /**
+     * اسکوپ معلمانی که در یک کلاس خاص تدریس می‌کنند
+     */
+    public function scopeTeachersInClass($query, $classId)
+    {
+        return $query->teachers()
+            ->whereHas('classSubjectTimes', function($q) use ($classId) {
+                $q->where('class_id', $classId);
+            });
+    }
+
+    /**
+     * اسکوپ والدین یک دانش‌آموز خاص
+     */
+    public function scopeParentsOfStudent($query, $studentId)
+    {
+        return $query->parents()
+            ->whereHas('children', function($q) use ($studentId) {
+                $q->where('id', $studentId);
+            });
+    }
+
+    /**
+     * مرتب‌سازی بر اساس نام
+     */
+    public function scopeOrderByName($query, $direction = 'asc')
+    {
+        return $query->orderBy('first_name', $direction)
+                     ->orderBy('last_name', $direction);
+    }
+
+    /**
+     * مرتب‌سازی بر اساس تاریخ ایجاد (جدیدترین)
+     */
+    public function scopeLatest($query)
+    {
+        return $query->orderBy('created_at', 'desc');
     }
 }
