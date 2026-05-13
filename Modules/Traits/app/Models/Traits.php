@@ -29,6 +29,44 @@ class Traits extends Model
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+    public const COLOR_PALETTE = [
+        '#FF5733', // قرمز-نارنجی
+        '#33FF57', // سبز
+        '#3357FF', // آبی
+        '#F333FF', // صورتی
+        '#FFD733', // زرد
+        '#33FFF5', // فیروزه‌ای
+        '#FF8333', // نارنجی
+        '#8E44AD', // بنفش
+        '#E74C3C', // قرمز
+        '#2ECC71', // سبز روشن
+        '#3498DB', // آبی روشن
+        '#F39C12', // نارنجی تیره
+        '#1ABC9C', // سبز آبی
+        '#9B59B6', // ارغوانی
+        '#34495E', // آبی تیره
+        '#E67E22', // نارنجی
+        '#7F8C8D', // خاکستری
+        '#16A085', // سبز دریایی
+        '#27AE60', // سبز
+        '#2980B9', // آبی
+        '#8E44AD', // بنفش
+        '#2C3E50', // آبی نفتی
+        '#D35400', // نارنجی سوخته
+        '#C0392B', // قرمز تیره
+    ];
+
+    /**
+     * دریافت لیست رنگ‌های ثابت
+     */
+    public static function getColorPalette(): array
+    {
+        return self::COLOR_PALETTE;
+    }
+    public static function isValidColor(string $color): bool
+    {
+        return in_array($color, self::COLOR_PALETTE);
+    }
     
         // ============ ارتباطات (Relationships) ============
 
@@ -74,72 +112,9 @@ class Traits extends Model
     
         // ============ متدهای کمکی (Helpers) ============
 
-    /**
-     * دریافت آیکون با مسیر کامل
-     */
-    public function getIconUrlAttribute()
-    {
-        if ($this->icon) {
-            return asset('storage/traits/' . $this->icon);
-        }
 
-        // آیکون پیش‌فرض بر اساس نام ویژگی
-        $defaultIcons = [
-            'self_esteem' => '🦁',
-            'self_awareness' => '🔍',
-            'unity' => '🤝',
-            'love' => '❤️',
-            'honesty' => '⭐',
-            'responsibility' => '✅',
-            'respect' => '🙏',
-            'empathy' => '🤗',
-        ];
 
-        return $defaultIcons[$this->key] ?? '🌟';
-    }
 
-    /**
-     * دریافت آیکون به صورت متن (برای نمایش در UI)
-     */
-    public function getIconEmojiAttribute()
-    {
-        $icons = [
-            'self_esteem' => '🦁',
-            'self_awareness' => '🔍',
-            'unity' => '🤝',
-            'love' => '❤️',
-            'honesty' => '⭐',
-            'responsibility' => '✅',
-            'respect' => '🙏',
-            'empathy' => '🤗',
-        ];
-
-        return $icons[$this->key] ?? '🌟';
-    }
-
-    /**
-     * دریافت رنگ به صورت متن (برای نمایش در UI)
-     */
-    public function getColorAttribute()
-    {
-        if ($this->color_code) {
-            return $this->color_code;
-        }
-
-        // رنگ‌های پیش‌فرض بر اساس کلید ویژگی
-        $defaultColors = [
-            'self_esteem' => '#10B981', // سبز
-            'self_awareness' => '#3B82F6', // آبی
-            'unity' => '#8B5CF6', // بنفش
-            'love' => '#EC4899', // صورتی
-            'honesty' => '#F59E0B', // نارنجی
-            'responsibility' => '#EF4444', // قرمز
-            'respect' => '#06B6D4', // فیروزه‌ای
-            'empathy' => '#6366F1', // نیلی
-        ];
-
-        return $defaultColors[$this->key] ?? '#6B7280'; // خاکستری
-    }
 
     /**
      * دریافت میانگین نمره این ویژگی برای یک دانش‌آموز خاص

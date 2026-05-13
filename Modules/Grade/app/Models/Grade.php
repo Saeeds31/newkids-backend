@@ -4,7 +4,6 @@ namespace Modules\Grade\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Class\Models\Classes;
 use Modules\Student\Models\Student;
 use Modules\Users\Models\User;
@@ -14,7 +13,7 @@ use Modules\Users\Models\User;
 class Grade extends Model
 {
 
-    use HasFactory, SoftDeletes;
+    use HasFactory;
 
     protected $table = 'grades';
 

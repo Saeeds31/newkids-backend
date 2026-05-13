@@ -5,7 +5,7 @@ use Modules\Users\Http\Controllers\AuthController;
 use Modules\Users\Http\Controllers\RolesController;
 use Modules\Users\Http\Controllers\UsersController;
 
-Route::post('v1/manager/check-login', [AuthController::class, 'managerCheckLogin'])->name("managerCheckLogin");
+Route::post('v1/check-login', [AuthController::class, 'CheckLogin'])->name("CheckLogin");
 Route::middleware(['auth:sanctum'])->prefix('v1/admin')->group(function () {
     
 });

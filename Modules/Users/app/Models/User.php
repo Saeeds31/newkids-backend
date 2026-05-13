@@ -25,6 +25,7 @@ class User extends Authenticatable
     protected $table = 'users';
 
     protected $fillable = [
+        'avatar',
         'first_name',
         'last_name',
         'mobile',
@@ -66,6 +67,8 @@ class User extends Authenticatable
     ];
 
     // ============ ارتباطات (Relationships) ============
+
+
     /**
      * ارتباط با نقش ایجاد شده
      */
