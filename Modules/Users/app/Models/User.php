@@ -1,6 +1,7 @@
 <?php
 
-namespace App\Models;
+namespace Modules\Users\Models;
+
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -65,7 +66,20 @@ class User extends Authenticatable
     ];
 
     // ============ ارتباطات (Relationships) ============
+    /**
+     * ارتباط با نقش ایجاد شده
+     */
+    public function roles()
+    {
+        return $this->belongsToMany(Role::class);
+    }
 
+
+    // متد کمکی برای بررسی نقش
+    public function hasRole($roleName): bool
+    {
+        return $this->roles()->where('slug', $roleName)->exists();
+    }
     /**
      * ارتباط با تسک‌های ایجاد شده (برای مدیر و ناظم)
      */
@@ -302,15 +316,15 @@ class User extends Authenticatable
     public function getActiveTasksForTeacher()
     {
         return $this->taskAssignments()
-            ->with(['task', 'class', 'taskOccurrences' => function($q) {
+            ->with(['task', 'class', 'taskOccurrences' => function ($q) {
                 $q->where('status', 'open')
-                  ->where('start_at', '<=', now())
-                  ->where('end_at', '>=', now());
+                    ->where('start_at', '<=', now())
+                    ->where('end_at', '>=', now());
             }])
-            ->whereHas('taskOccurrences', function($q) {
+            ->whereHas('taskOccurrences', function ($q) {
                 $q->where('status', 'open')
-                  ->where('start_at', '<=', now())
-                  ->where('end_at', '>=', now());
+                    ->where('start_at', '<=', now())
+                    ->where('end_at', '>=', now());
             })
             ->get();
     }
@@ -321,10 +335,10 @@ class User extends Authenticatable
     public function getPendingTasksForTeacher()
     {
         return $this->taskAssignments()
-            ->with(['task', 'class', 'taskOccurrences' => function($q) {
+            ->with(['task', 'class', 'taskOccurrences' => function ($q) {
                 $q->where('status', 'pending');
             }])
-            ->whereHas('taskOccurrences', function($q) {
+            ->whereHas('taskOccurrences', function ($q) {
                 $q->where('status', 'pending');
             })
             ->get();
@@ -336,10 +350,10 @@ class User extends Authenticatable
     public function getChildrenWithRecentResults($limit = 5)
     {
         return $this->children()
-            ->with(['class', 'taskResults' => function($q) use ($limit) {
+            ->with(['class', 'taskResults' => function ($q) use ($limit) {
                 $q->with(['taskOccurrence.taskAssignment.task', 'status'])
-                  ->latest()
-                  ->limit($limit);
+                    ->latest()
+                    ->limit($limit);
             }])
             ->get();
     }
@@ -407,10 +421,10 @@ class User extends Authenticatable
      */
     public function scopeSearch($query, $searchTerm)
     {
-        return $query->where(function($q) use ($searchTerm) {
+        return $query->where(function ($q) use ($searchTerm) {
             $q->where('first_name', 'like', "%{$searchTerm}%")
-              ->orWhere('last_name', 'like', "%{$searchTerm}%")
-              ->orWhere('mobile', 'like', "%{$searchTerm}%");
+                ->orWhere('last_name', 'like', "%{$searchTerm}%")
+                ->orWhere('mobile', 'like', "%{$searchTerm}%");
         });
     }
 
@@ -420,7 +434,7 @@ class User extends Authenticatable
     public function scopeTeachersInClass($query, $classId)
     {
         return $query->teachers()
-            ->whereHas('classSubjectTimes', function($q) use ($classId) {
+            ->whereHas('classSubjectTimes', function ($q) use ($classId) {
                 $q->where('class_id', $classId);
             });
     }
@@ -431,7 +445,7 @@ class User extends Authenticatable
     public function scopeParentsOfStudent($query, $studentId)
     {
         return $query->parents()
-            ->whereHas('children', function($q) use ($studentId) {
+            ->whereHas('children', function ($q) use ($studentId) {
                 $q->where('id', $studentId);
             });
     }
@@ -442,7 +456,7 @@ class User extends Authenticatable
     public function scopeOrderByName($query, $direction = 'asc')
     {
         return $query->orderBy('first_name', $direction)
-                     ->orderBy('last_name', $direction);
+            ->orderBy('last_name', $direction);
     }
 
     /**

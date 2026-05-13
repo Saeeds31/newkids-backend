@@ -14,6 +14,9 @@ class RunController extends Controller
     public function runShop()
     {
         $user = User::create([
+            'first_name' => 'دکتر احسان ',
+            'last_name' => 'امیریان',
+            'is_active' => true,
             'full_name' => 'super admin',
             'mobile' => '09113894304',
             'password' => Hash::make('superAdmin#123'),
@@ -24,14 +27,20 @@ class RunController extends Controller
             'slug' => 'superAdmin',
         ]);
         Role::create([
-            'name' => 'مشتری',
+            'name' => 'مدیریت',
             'is_system' => true,
-            'slug' => 'customer',
+            'slug' => 'manager',
         ]);
         Role::create([
-            'name' => 'کارفرما',
+            'name' => 'معلم',
             'is_system' => true,
-            'slug' => 'employer',
+            'slug' => 'teacher',
+        ]);
+
+        Role::create([
+            'name' => 'والدین',
+            'is_system' => true,
+            'slug' => 'parent',
         ]);
         $user->roles()->sync([$roleSuperAdmin]);
         return response()->json(['message' => 'تنظیمات اولیه انجام شد پرمیژن ها را اجرا کنید']);
@@ -54,36 +63,18 @@ class RunController extends Controller
     public function setPermissions()
     {
         $models = [
-            'Address'   => 'آدرس',
-            'ArticleCategory'  => 'دسته بندی مقاله',
-            'Article'      => 'مقاله',
-            'Attributes'      => 'ویژگی',
-            'Banner'       => 'بنر',
-            'Portfolio'       => 'نمونه کار',
-            'PortfolioCategory'       => 'دسته بندی نمونه کار',
-            'technology'       => 'تکنولوژی',
-            'category'   => 'دسته بندی',
-            'Comment'      => 'کامنت',
-            'coupon'   => 'کد تخفیف',
-            'file'   => 'فایل',
-            'fileCategory'   => 'دسته بندی فایل',
-            'Menu'   => 'منو',
-            'employer'   => 'کارفرما',
-            'order'   => 'سفارش',
-            'city'   => 'شهر',
-            'province'   => 'استان',
-            'product'   => 'محصول',
+            'class'   => 'کلاس',
+            'grade'   => 'پایه',
+            'message'   => 'پیام',
+            'skills'   => 'مهارت',
+            'student'   => 'دانش آموز',
+            'subject'   => 'موضوع',
+            'task'   => 'وظیفه',
+            'traits'   => 'ویژگی',
+            'wallet'   => 'کیف پول',
             'Setting'   => 'تنظیمات',
-            'contact'   => 'فرم ارتباط باما',
-            'shipping'   => 'حمل و نقل',
-            'Slider'   => 'اسلایدر',
-            'specifications'   => 'مشخصات',
             'Role'   => 'نقش',
-            'Wishlist'   => 'نقش',
             'User'   => 'کاربران',
-            'Wallet'   => 'کیف پول',
-            'WalletTransaction'   => 'تراکنش کیف پول',
-            'manager'   => 'مدیریت',
         ];
         $actions = [
             'view'   => 'مشاهده',
@@ -102,28 +93,10 @@ class RunController extends Controller
             }
         }
         $others = [
-            'employer_subscription' => 'مدیریت سطح پشتیبانی',
-            'employer_cost' => 'مدیریت هزینه های کارفرما',
-            'employer_deposit' => 'مدیریت پرداختی  های کارفرما',
-            'dashboard_view' => 'داشبورد',
-            'ticket_view' => 'مشاهده تیکت ها',
-            'ticket_store' => 'افزودن تیکت',
-            'report_users' => 'گزارش کاربران',
-            'report_orders' => 'گزارش سفارش ها',
-            'order_today' => 'سفارشات روز',
-            'report_products' => 'گزارش محصولات',
-            'comment_blogs' => 'کامنت مقالات',
-            'comment_products' => 'کامنت مقالات',
-            'employer_comment' => 'کامنت کارفرما',
-            'role_permission' => 'دسترسی نقش',
             'notifications_user' => 'اعلان کاربران',
-            'notification_article' => 'اعلان مقالات',
-            'notification_product' => 'اعلان محصولات',
-            'notification_portfolio' => 'اعلان نمونه کار',
-            'notification_content' => 'اعلان محتواها',
-            'notification_employer' => 'اعلان کارفرماها',
-            'notification_file' => 'اعلان فایل ها',
-            'notification_order' => 'اعلان سفارشات',
+            'notification_task' => 'اعلان وظایف',
+            'notification_class' => 'اعلان کلاس ها',
+            'notification_student' => 'اعلان دانش آموزان',
         ];
         foreach ($others as $pername => $perPersianName) {
             Permission::updateOrCreate(

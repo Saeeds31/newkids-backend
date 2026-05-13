@@ -17,9 +17,34 @@ use Modules\Wallet\Models\Wallet;
 
 class AuthController extends Controller
 {
+    public function managerCheckLogin(Request $request)
+    {
+        $validated = $request->validate([
+            'mobile' => 'required|string|size:11'
+        ]);
 
+        $user = User::with(['roles'])->where('mobile', $validated['mobile'])->first();
 
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'شماره پیدا نشد'
+            ], 404);
+        }
 
+        if ($user->hasRole('parent')) {
+            return response()->json([
+                'success' => false,
+                'message' => 'شما اجازه ورود به این قسمت را ندارید'
+            ], 403);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'اطلاعات ورود',
+            'role' => $user->roles->select(['slug','name']),
+        ], 200);
+    }
     public function checkMobile(Request $request)
     {
         $request->validate([

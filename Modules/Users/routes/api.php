@@ -5,6 +5,12 @@ use Modules\Users\Http\Controllers\AuthController;
 use Modules\Users\Http\Controllers\RolesController;
 use Modules\Users\Http\Controllers\UsersController;
 
+Route::post('v1/manager/check-login', [AuthController::class, 'managerCheckLogin'])->name("managerCheckLogin");
+Route::middleware(['auth:sanctum'])->prefix('v1/admin')->group(function () {
+    
+});
+
+// 
 Route::middleware(['auth:sanctum'])->prefix('v1/admin')->group(function () {
     Route::apiResource('users', UsersController::class)->names('users');
     Route::get('/supporter', [UsersController::class, 'getSupporter'])->name("getSupporter");
