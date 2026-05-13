@@ -35,7 +35,7 @@ class TraitsController extends Controller
         // مدیریت آپلود آواتار دانش‌آموز
         if ($request->hasFile('icon')) {
             $icon = $request->file('icon')->store('traits/icon', 'public');
-            $studentData['icon'] = $icon;
+            $validated['icon'] = $icon;
         }
         $trait = Traits::create($validated);
         // ثبت نوتیفیکیشن
@@ -96,7 +96,7 @@ class TraitsController extends Controller
             if ($trait->icon && Storage::disk('public')->exists($trait->avatar)) {
                 Storage::disk('public')->delete($trait->avatar);
             }
-            $trait['icon'] = $request->file('icon')->store('traits/icon', 'public');
+            $validated['icon'] = $request->file('icon')->store('traits/icon', 'public');
         }
         $trait->update($validated);
         // ثبت نوتیفیکیشن
