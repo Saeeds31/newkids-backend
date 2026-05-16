@@ -4,18 +4,15 @@ namespace Modules\Task\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Class\Models\Classes;
 use Modules\Skills\Models\Skills;
 use Modules\Traits\Models\Traits;
 use Modules\Users\Models\User;
 
-// use Modules\Task\Database\Factories\TaskFactory;
-
 class Task extends Model
 {
-   
-    use HasFactory, SoftDeletes;
+
+    use HasFactory;
 
     protected $table = 'tasks';
 
@@ -37,7 +34,41 @@ class Task extends Model
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
+    public const COLOR_PALETTE = [
+        '#FF5733', // قرمز-نارنجی
+        '#33FF57', // سبز
+        '#3357FF', // آبی
+        '#F333FF', // صورتی
+        '#FFD733', // زرد
+        '#33FFF5', // فیروزه‌ای
+        '#FF8333', // نارنجی
+        '#8E44AD', // بنفش
+        '#E74C3C', // قرمز
+        '#2ECC71', // سبز روشن
+        '#3498DB', // آبی روشن
+        '#F39C12', // نارنجی تیره
+        '#1ABC9C', // سبز آبی
+        '#9B59B6', // ارغوانی
+        '#34495E', // آبی تیره
+        '#E67E22', // نارنجی
+        '#7F8C8D', // خاکستری
+        '#16A085', // سبز دریایی
+        '#27AE60', // سبز
+        '#2980B9', // آبی
+        '#8E44AD', // بنفش
+        '#2C3E50', // آبی نفتی
+        '#D35400', // نارنجی سوخته
+        '#C0392B', // قرمز تیره
+    ];
 
+    public static function getColorPalette(): array
+    {
+        return self::COLOR_PALETTE;
+    }
+    public static function isValidColor(string $color): bool
+    {
+        return in_array($color, self::COLOR_PALETTE);
+    }
     // ============ ثابت‌ها (Constants) ============
 
     const TYPE_ROUTINE = 'routine';
@@ -125,7 +156,7 @@ class Task extends Model
         );
     }
 
-    
+
 
     /**
      * ارتباط با معیارهای ارزیابی تسک
@@ -196,7 +227,7 @@ class Task extends Model
         if (!$this->labels) {
             return [];
         }
-        
+
         return explode(',', $this->labels);
     }
 
@@ -206,12 +237,12 @@ class Task extends Model
     public function getCurrentStatusAttribute()
     {
         $now = now();
-        
+
         if ($this->type === self::TYPE_ONCE) {
             if (!$this->start_date || !$this->end_date) {
                 return 'not_scheduled';
             }
-            
+
             if ($now < $this->start_date) {
                 return 'pending';
             } elseif ($now >= $this->start_date && $now <= $this->end_date) {
@@ -220,7 +251,7 @@ class Task extends Model
                 return 'expired';
             }
         }
-        
+
         // برای تسک روتین
         if ($this->routineSchedule && $this->routineSchedule->routine_expire_at) {
             if ($now > $this->routineSchedule->routine_expire_at) {
@@ -228,7 +259,7 @@ class Task extends Model
             }
             return 'active';
         }
-        
+
         return 'active';
     }
 
@@ -265,15 +296,15 @@ class Task extends Model
             ->where('student_id', $studentId)
             ->with('status')
             ->get();
-        
+
         if ($results->isEmpty()) {
             return 0;
         }
-        
-        $totalPoints = $results->sum(function($result) {
+
+        $totalPoints = $results->sum(function ($result) {
             return $result->status ? $result->status->points : 0;
         });
-        
+
         return round($totalPoints / $results->count(), 2);
     }
 
@@ -283,20 +314,20 @@ class Task extends Model
     public function getStatusDistributionForClass($classId)
     {
         $results = $this->taskResults()
-            ->whereHas('student', function($q) use ($classId) {
+            ->whereHas('student', function ($q) use ($classId) {
                 $q->where('class_id', $classId);
             })
             ->with('status')
             ->get();
-        
+
         $distribution = [];
-        
+
         foreach ($this->statusDefinitions as $status) {
-            $distribution[$status->status_label] = $results->filter(function($result) use ($status) {
+            $distribution[$status->status_label] = $results->filter(function ($result) use ($status) {
                 return $result->status_id === $status->id;
             })->count();
         }
-        
+
         return $distribution;
     }
 
@@ -308,9 +339,9 @@ class Task extends Model
         $criteria = $this->evaluationCriteria()
             ->with(['trait', 'skill'])
             ->get();
-        
+
         $result = [];
-        
+
         foreach ($criteria as $criterion) {
             if ($criterion->criterion_type === 'trait' && $criterion->trait) {
                 $result['traits'][] = [
@@ -330,7 +361,7 @@ class Task extends Model
                 ];
             }
         }
-        
+
         return $result;
     }
 
@@ -343,28 +374,28 @@ class Task extends Model
         $newTask->title = $newTitle ?? $this->title . ' (کپی)';
         $newTask->created_by = $newCreatedBy ?? $this->created_by;
         $newTask->save();
-        
+
         // کپی وضعیت‌ها
         foreach ($this->statusDefinitions as $status) {
             $newStatus = $status->replicate();
             $newStatus->task_id = $newTask->id;
             $newStatus->save();
         }
-        
+
         // کپی معیارهای ارزیابی
         foreach ($this->evaluationCriteria as $criterion) {
             $newCriterion = $criterion->replicate();
             $newCriterion->task_id = $newTask->id;
             $newCriterion->save();
         }
-        
+
         // کپی زمان‌بندی روتین
         if ($this->routineSchedule) {
             $newSchedule = $this->routineSchedule->replicate();
             $newSchedule->task_id = $newTask->id;
             $newSchedule->save();
         }
-        
+
         return $newTask;
     }
 
@@ -392,17 +423,17 @@ class Task extends Model
     public function scopeActive($query)
     {
         $now = now();
-        
-        return $query->where(function($q) use ($now) {
+
+        return $query->where(function ($q) use ($now) {
             // تسک‌های یکبار در بازه زمانی
-            $q->where(function($sub) use ($now) {
+            $q->where(function ($sub) use ($now) {
                 $sub->where('type', self::TYPE_ONCE)
                     ->where('start_date', '<=', $now)
                     ->where('end_date', '>=', $now);
-            })->orWhere(function($sub) {
+            })->orWhere(function ($sub) {
                 // تسک‌های روتین که تاریخ انقضای آن‌ها نرسیده
                 $sub->where('type', self::TYPE_ROUTINE)
-                    ->whereHas('routineSchedule', function($schedule) use ($now) {
+                    ->whereHas('routineSchedule', function ($schedule) use ($now) {
                         $schedule->where('routine_expire_at', '>', $now);
                     });
             });
@@ -415,7 +446,7 @@ class Task extends Model
     public function scopeSearch($query, $searchTerm)
     {
         return $query->where('title', 'like', "%{$searchTerm}%")
-                     ->orWhere('description', 'like', "%{$searchTerm}%");
+            ->orWhere('description', 'like', "%{$searchTerm}%");
     }
 
     /**
@@ -431,7 +462,7 @@ class Task extends Model
      */
     public function scopeForClass($query, $classId)
     {
-        return $query->whereHas('classes', function($q) use ($classId) {
+        return $query->whereHas('classes', function ($q) use ($classId) {
             $q->where('classes.id', $classId);
         });
     }
@@ -441,7 +472,7 @@ class Task extends Model
      */
     public function scopeForTeacher($query, $teacherId)
     {
-        return $query->whereHas('teachers', function($q) use ($teacherId) {
+        return $query->whereHas('teachers', function ($q) use ($teacherId) {
             $q->where('users.id', $teacherId);
         });
     }

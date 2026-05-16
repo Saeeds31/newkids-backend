@@ -83,6 +83,7 @@ class User extends Authenticatable
     {
         return $this->roles()->where('slug', $roleName)->exists();
     }
+
     /**
      * ارتباط با تسک‌های ایجاد شده (برای مدیر و ناظم)
      */
@@ -256,9 +257,31 @@ class User extends Authenticatable
         return $this->role === self::ROLE_PARENT;
     }
 
+    // دانش‌آموزانی که این معلم تدریس می‌کند (از طریق کلاس‌ها)
+    public function students()
+    {
+        return $this->hasManyThrough(
+            Student::class,
+            Classes::class,
+            'teacher_id', // foreign key on classes table
+            'class_id',   // foreign key on students table
+            'id',         // local key on users table
+            'id'          // local key on classes table
+        );
+    }
+
+    // کلاس‌هایی که این معلم تدریس می‌کند
+    public function classes()
+    {
+        return $this->hasMany(Classes::class, 'teacher_id');
+    }
+
+    // وظایف محول شده به این معلم
+    
     /**
      * بررسی آیا کاربر فعال است
      */
+
     public function getIsActiveUserAttribute()
     {
         return $this->is_active && is_null($this->deleted_at);

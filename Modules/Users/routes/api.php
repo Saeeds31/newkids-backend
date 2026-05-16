@@ -38,3 +38,7 @@ Route::middleware(['auth:sanctum'])->prefix('v1/front')->group(function () {
     Route::get('/user/profile', [UsersController::class, 'userProfile']);
     Route::put('/user/profile', [UsersController::class, 'updateProfile']);
 });
+
+Route::prefix('v1')->middleware(['auth:sanctum'])->group(function () {
+    require_once __DIR__ . '/teacher.php';
+});

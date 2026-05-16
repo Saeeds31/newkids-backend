@@ -3,6 +3,7 @@
 namespace Modules\Skills\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Modules\Skills\Models\Skills;
 
 class SkillsStoreRequest extends FormRequest
 {
@@ -11,7 +12,22 @@ class SkillsStoreRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [];
+        return [
+            'name' => 'required|string|max:100|unique:traits,name',
+            'key' => 'required|string|max:50|unique:traits,key|regex:/^[a-z_]+$/',
+            'description' => 'nullable|string|max:500',
+            'icon' => 'nullable|file|max:1024',
+            'color_code' => [
+                'required',
+                'string',
+                'regex:/^#[0-9A-Fa-f]{6}$/',
+                function ($attribute, $value, $fail) {
+                    if (!Skills::isValidColor($value)) {
+                        $fail('کد رنگ انتخاب شده معتبر نیست. از رنگ‌های موجود استفاده کنید.');
+                    }
+                },
+            ]
+        ];
     }
 
     /**

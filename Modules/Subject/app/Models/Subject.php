@@ -17,7 +17,7 @@ use Modules\Users\Models\User;
 class Subject extends Model
 {
 
-    use HasFactory, SoftDeletes;
+    use HasFactory;
 
     protected $table = 'subjects';
 
