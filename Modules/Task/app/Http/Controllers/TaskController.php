@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Modules\Notifications\Services\NotificationService;
+use Modules\Task\Models\RoutineSchedules;
 use Modules\Task\Models\Task;
 use Modules\Task\Models\TaskAssignment;
 use Modules\Task\Models\TaskEvaluationCriteria;
@@ -62,6 +63,13 @@ class TaskController extends Controller
                 'start_date' => 'nullable|date',
                 'end_date' => 'nullable|date|after_or_equal:start_date',
 
+                // زمان‌بندی روتین (فقط برای نوع routine - یک رکورد)
+                'day_of_week' => 'required_if:type,routine|integer|min:1|max:7',
+                'start_time' => 'required_if:type,routine|date_format:H:i',
+                'end_time' => 'required_if:type,routine|date_format:H:i|after:start_time',
+                'duration_days' => 'required_if:type,routine|integer|min:1',
+                'routine_expire_at' => 'required_if:type,routine|date|after:today',
+
                 // انتسابات (Assignments)
                 'assignments' => 'nullable|array',
                 'assignments.*.class_id' => 'required_with:assignments|exists:classes,id',
@@ -76,7 +84,7 @@ class TaskController extends Controller
             ]);
 
             // 1. ایجاد Task
-            $task = Task::create([
+            $taskData = [
                 'title' => $validated['title'],
                 'labels' => $validated['labels'] ?? null,
                 'color_code' => $validated['color_code'] ?? null,
@@ -84,10 +92,35 @@ class TaskController extends Controller
                 'created_by' => $request->user()->id,
                 'type' => $validated['type'],
                 'start_date' => $validated['start_date'] ?? null,
-                'end_date' => $validated['end_date'] ?? null,
-            ]);
+            ];
 
-            // 2. ایجاد انتسابات (TaskAssignments)
+            // اگر نوع روتین است
+            if ($validated['type'] === 'routine') {
+                $taskData['end_date'] = null;  // تسک روتین end_date ندارد
+                $taskData['duration_days'] = $validated['duration_days'];
+                $taskData['routine_expire_at'] = $validated['routine_expire_at'];
+            } else {
+                // تسک یکبار انجام
+                $taskData['end_date'] = $validated['end_date'] ?? null;
+                $taskData['duration_days'] = null;
+                $taskData['routine_expire_at'] = null;
+            }
+
+            $task = Task::create($taskData);
+
+            // 2. ایجاد زمان‌بندی روتین (فقط برای نوع routine - یک رکورد)
+            if ($validated['type'] === 'routine') {
+                RoutineSchedules::create([
+                    'task_id' => $task->id,
+                    'day_of_week' => $validated['day_of_week'],
+                    'start_time' => $validated['start_time'],
+                    'end_time' => $validated['end_time'],
+                    'duration_days' => $validated['duration_days'],
+                    'routine_expire_at' => $validated['routine_expire_at'],
+                ]);
+            }
+
+            // 3. ایجاد انتسابات (TaskAssignments)
             if (!empty($validated['assignments'])) {
                 foreach ($validated['assignments'] as $assignment) {
                     TaskAssignment::create([
@@ -99,7 +132,7 @@ class TaskController extends Controller
                 }
             }
 
-            // 3. ایجاد معیارهای ارزیابی
+            // 4. ایجاد معیارهای ارزیابی
             if (!empty($validated['evaluation_criteria'])) {
                 foreach ($validated['evaluation_criteria'] as $criterion) {
                     TaskEvaluationCriteria::create([
@@ -115,31 +148,36 @@ class TaskController extends Controller
             DB::commit();
 
             // بارگذاری روابط
-            $task->load(['creator', 'assignments', 'evaluationCriteria']);
+            $task->load(['creator', 'assignments', 'evaluationCriteria', 'routineSchedule']);
 
-            // ثبت نوتیفیکیشن
+            // ثبت نوتیفیکیشن اصلی
             $notifications->create(
                 "ایجاد وظیفه جدید",
                 "وظیفه {$task->title} با موفقیت ایجاد شد",
                 "notification_task",
                 [
                     'task_id' => $task->id,
-                    'maker' => $request->user()->full_name
+                    'maker' => $request->user()->full_name,
+                    'type' => $task->type
                 ]
             );
+
+            // ثبت نوتیفیکیشن برای معلمان
             if (!empty($validated['assignments'])) {
                 foreach ($validated['assignments'] as $assignment) {
                     $notifications->create(
-                        "ایجاد وظیفه جدید",
+                        "وظیفه جدید",
                         "یک وظیفه با عنوان {$task->title} برای شما ثبت شد",
                         "notification_user_" . $assignment['teacher_id'],
                         [
                             'task_id' => $task->id,
+                            'task_type' => $task->type,
                             'maker' => $request->user()->full_name
                         ]
                     );
                 }
             }
+
             return response()->json([
                 'success' => true,
                 'message' => 'وظیفه با موفقیت ایجاد شد',
@@ -161,12 +199,12 @@ class TaskController extends Controller
     {
         $task = Task::with([
             'creator',
-            'assignments.class',
-            'assignments.teacher',
-            'assignments.occurrences.results.student',
-            'assignments.occurrences.results.evaluations',
+            'taskAssignments.class',
+            'taskAssignments.teacher',
+            'taskAssignments.taskOccurrences.taskResults.student',
+            'taskAssignments.taskOccurrences.taskResults.evaluations',
             'evaluationCriteria',
-            'occurrences.results'
+            'taskOccurrences.taskResults'
         ])->find($id);
 
         if (!$task) {
@@ -202,34 +240,155 @@ class TaskController extends Controller
             $validated = $request->validate([
                 'title' => 'sometimes|required|string|max:200',
                 'labels' => 'nullable|array',
-                'color_code' => 'nullable|string|regex:/^#[0-9A-Fa-f]{6}$/',
+                'color_code' => [
+                    'sometimes',
+                    'required',
+                    'string',
+                    'regex:/^#[0-9A-Fa-f]{6}$/',
+                    function ($attribute, $value, $fail) {
+                        if (!Task::isValidColor($value)) {
+                            $fail('کد رنگ انتخاب شده معتبر نیست.');
+                        }
+                    },
+                ],
                 'description' => 'nullable|string',
-                'type' => 'sometimes|required|in:homework,exam,project,activity',
+                'type' => 'sometimes|required|in:routine,once',
                 'start_date' => 'nullable|date',
                 'end_date' => 'nullable|date|after_or_equal:start_date',
+
+                // زمان‌بندی روتین (برای نوع routine)
+                'day_of_week' => 'nullable|integer|min:1|max:7',
+                'start_time' => 'nullable|date_format:H:i',
+                'end_time' => 'nullable|date_format:H:i|after:start_time',
+                'duration_days' => 'nullable|integer|min:1',
+                'routine_expire_at' => 'nullable|date|after:today',
             ]);
 
-            $task->update($validated);
+            // تشخیص تغییر نوع تسک
+            $oldType = $task->type;
+            $newType = $validated['type'] ?? $oldType;
+            $typeChanged = ($oldType !== $newType);
+
+            // ========== بروزرسانی تسک ==========
+            $taskData = [];
+
+            if (isset($validated['title'])) $taskData['title'] = $validated['title'];
+            if (isset($validated['labels'])) $taskData['labels'] = $validated['labels'];
+            if (isset($validated['color_code'])) $taskData['color_code'] = $validated['color_code'];
+            if (isset($validated['description'])) $taskData['description'] = $validated['description'];
+            if (isset($validated['start_date'])) $taskData['start_date'] = $validated['start_date'];
+
+            // بروزرسانی نوع تسک
+            if (isset($validated['type'])) {
+                $taskData['type'] = $validated['type'];
+            }
+
+            // مدیریت فیلدها بر اساس نوع جدید
+            if ($newType === 'routine') {
+                // اگر تسک روتین است
+                if (isset($validated['duration_days'])) {
+                    $taskData['duration_days'] = $validated['duration_days'];
+                } elseif ($typeChanged && $newType === 'routine') {
+                    $taskData['duration_days'] = null; // اگر از once به routine تغییر کرده
+                }
+
+                if (isset($validated['routine_expire_at'])) {
+                    $taskData['routine_expire_at'] = $validated['routine_expire_at'];
+                } elseif ($typeChanged && $newType === 'routine') {
+                    $taskData['routine_expire_at'] = null;
+                }
+
+                // پاک کردن end_date برای تسک روتین
+                $taskData['end_date'] = null;
+            } else {
+                // اگر تسک یکبار انجام است
+                if (isset($validated['end_date'])) {
+                    $taskData['end_date'] = $validated['end_date'];
+                } elseif ($typeChanged && $newType === 'once') {
+                    $taskData['end_date'] = null;
+                }
+
+                // پاک کردن فیلدهای روتین
+                $taskData['duration_days'] = null;
+                $taskData['routine_expire_at'] = null;
+            }
+
+            $task->update($taskData);
+
+            // ========== مدیریت جدول routine_schedules ==========
+            if ($newType === 'routine') {
+                // اگر نوع جدید روتین است
+                $routineData = [];
+
+                if (isset($validated['day_of_week'])) $routineData['day_of_week'] = $validated['day_of_week'];
+                if (isset($validated['start_time'])) $routineData['start_time'] = $validated['start_time'];
+                if (isset($validated['end_time'])) $routineData['end_time'] = $validated['end_time'];
+                if (isset($validated['duration_days'])) $routineData['duration_days'] = $validated['duration_days'];
+                if (isset($validated['routine_expire_at'])) $routineData['routine_expire_at'] = $validated['routine_expire_at'];
+
+                // اگر از once به routine تغییر کرده و داده روتین ارسال نشده
+                if ($typeChanged && empty($routineData)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'برای تبدیل تسک به نوع روتین، باید اطلاعات زمان‌بندی (day_of_week, start_time, end_time, duration_days, routine_expire_at) ارسال شود.'
+                    ], 422);
+                }
+
+                if (!empty($routineData)) {
+                    if ($task->routineSchedule) {
+                        // بروزرسانی رکورد موجود
+                        $task->routineSchedule->update($routineData);
+                    } else {
+                        // ایجاد رکورد جدید
+                        $routineData['task_id'] = $task->id;
+                        RoutineSchedules::create($routineData);
+                    }
+                }
+            } else {
+                // اگر نوع جدید یکبار انجام است، رکورد routine_schedules را حذف کن
+                if ($task->routineSchedule) {
+                    $task->routineSchedule->delete();
+                }
+            }
+
+            // ========== اگر نوع از routine به once تغییر کرده بود ==========
+            // و کاربر فیلدهای تسک یکبار انجام را ارسال نکرده بود
+            if ($typeChanged && $newType === 'once' && !isset($validated['end_date'])) {
+                // اگر نیازی به تغییر end_date نباشد، مشکلی نیست
+                // فقط فیلدهای روتین پاک شدند
+            }
 
             DB::commit();
 
-            $task->load(['creator', 'assignments', 'evaluationCriteria']);
+            // بارگذاری مجدد روابط
+            $task->load(['creator', 'assignments', 'evaluationCriteria', 'routineSchedule']);
 
+            // ثبت نوتیفیکیشن
+            $maker = $request->user();
             $notifications->create(
                 "بروزرسانی وظیفه",
-                "وظیفه {$task->title} بروزرسانی شد",
+                "وظیفه {$task->title} بروزرسانی شد" . ($typeChanged ? " و نوع آن از {$oldType} به {$newType} تغییر کرد" : ""),
                 "notification_task",
                 [
                     'task_id' => $task->id,
-                    'maker' => $request->user()->full_name
+                    'maker' => $maker->full_name,
+                    'old_type' => $oldType,
+                    'new_type' => $newType
                 ]
             );
 
             return response()->json([
                 'success' => true,
-                'message' => 'وظیفه با موفقیت بروزرسانی شد',
+                'message' => 'وظیفه با موفقیت بروزرسانی شد' . ($typeChanged ? " و نوع آن تغییر کرد" : ""),
                 'data' => $task
             ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'خطای اعتبارسنجی',
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -242,7 +401,7 @@ class TaskController extends Controller
     /**
      * حذف وظیفه (به همراه همه وابستگی‌ها)
      */
-    public function destroy($id, NotificationService $notifications)
+    public function destroy(Request $request,$id, NotificationService $notifications)
     {
         $task = Task::find($id);
 
