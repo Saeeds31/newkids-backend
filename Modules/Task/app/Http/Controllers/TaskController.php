@@ -6,13 +6,216 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Modules\Notifications\Services\NotificationService;
+use Modules\Student\Models\Student;
 use Modules\Task\Models\RoutineSchedules;
 use Modules\Task\Models\Task;
 use Modules\Task\Models\TaskAssignment;
 use Modules\Task\Models\TaskEvaluationCriteria;
+use Modules\Task\Models\TaskResultEvaluation;
+use Modules\Task\Models\TaskResults;
 
 class TaskController extends Controller
 {
+
+
+    public function completeTask(Request $request, $taskId, NotificationService $notifications)
+    {
+        DB::beginTransaction();
+
+        try {
+            $validated = $request->validate([
+                'student_id' => 'required|exists:students,id',
+                'description' => 'nullable|string|max:1000',
+                'evaluations' => 'required|array|min:1',
+                'evaluations.*.criterion_type' => 'required|string|in:trait,skill',
+                'evaluations.*.criterion_id' => 'required|exists:task_evaluation_criteria,id',
+                'evaluations.*.score' => 'required|numeric|min:0|max:100',
+            ]);
+
+            $task = Task::with([
+                'evaluationCriteria',
+                'taskAssignments' => function ($q) {
+                    $q->with(['class']);
+                }
+            ])->find($taskId);
+
+            if (!$task) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'تسک مورد نظر یافت نشد'
+                ], 404);
+            }
+            $teacher = $request->user();
+
+            $assignment = TaskAssignment::where('teacher_id', $teacher->id)->where('task_id', $taskId)->first();
+            if (!$assignment) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'شما دسترسی به ثبت نتیجه برای این تسک را ندارید'
+                ], 403);
+            }
+            $classId = $assignment->class_id;
+            $student = Student::where('id', $validated['student_id'])
+                ->where('class_id', $classId)
+                ->first();
+
+            if (!$student) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'این دانش‌آموز در کلاس مربوط به این تسک ثبت نام نشده است'
+                ], 404);
+            }
+            $existingResult = TaskResults::whereHas('taskOccurrence', function ($q) use ($taskId, $classId) {
+                $q->where('task_id', $taskId)
+                    ->where('class_id', $classId);
+            })->where('student_id', $validated['student_id'])->first();
+
+            if ($existingResult) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'نتیجه این تسک برای این دانش‌آموز قبلاً ثبت شده است',
+                    'data' => $existingResult
+                ], 409);
+            }
+            $result = TaskResults::create([
+                'task_id' => $taskId,
+                'student_id' => $validated['student_id'],
+                'description' => $validated['description'] ?? null,
+                'recorded_by' => $teacher->id,
+            ]);
+            $totalScore = 0;
+            $maxPossibleScore = 0;
+            $evaluationsList = [];
+
+            foreach ($validated['evaluations'] as $evaluation) {
+                $criterion = TaskEvaluationCriteria::find($evaluation['criterion_id']);
+                if (!$criterion || $criterion->task_id != $taskId) {
+                    continue;
+                }
+
+                $resultEvaluation = TaskResultEvaluation::create([
+                    'task_result_id' => $result->id,
+                    'evaluation_criterion_id' => $criterion->id,
+                    'score' => $evaluation['score'],
+                ]);
+            }
+            $totalStudentsInClass = Student::where('class_id', $classId)->count();
+            $studentsWhoCompleted = TaskResults::where('task_id', $taskId)
+                ->whereHas('student', function ($q) use ($classId) {
+                    $q->where('class_id', $classId);
+                })
+                ->distinct()
+                ->count('student_id');
+
+            $isTaskDone = ($totalStudentsInClass == $studentsWhoCompleted);
+
+            if ($isTaskDone) {
+                $status = 'done';
+            } else {
+                $status = 'doing';
+            }
+            $task->update([
+                'status' => $status
+            ]);
+
+            DB::commit();
+            $notifications->create(
+                "ثبت نتیجه تسک",
+                "مربی {$teacher->full_name} نتیجه تسک {$task->title} را برای دانش‌آموز {$student->full_name} ثبت کرد",
+                "notification_task",
+                [
+                    'task_id' => $taskId,
+                    'student_id' => $student->id,
+                    'maker' => $teacher->id,
+                ]
+            );
+            $notifications->create(
+                "ثبت نتیجه تسک",
+                "شما نتیجه تسک {$task->title} را برای دانش‌آموز {$student->full_name} ثبت کردید",
+                "notification_user_" . $teacher->id,
+                [
+                    'task_id' => $taskId,
+                    'maker' => $teacher->id,
+                ]
+            );
+            if ($student->parent_id) {
+                $notifications->create(
+                    "نتیجه فعالیت فرزندتان",
+                    "نتیجه فعالیت {$task->title} برای فرزند شما {$student->full_name} ثبت شد. ",
+                    "notification_student_" . $student->id,
+                    [
+                        'task_id' => $taskId,
+                        'maker' => $teacher->id,
+                    ]
+                );
+            }
+            return response()->json([
+                'success' => true,
+                'message' => 'نتیجه تسک با موفقیت ثبت شد',
+            ], 201);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطای اعتبارسنجی',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در ثبت نتیجه تسک: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+
+
+    public function getTeacherDashboardTasks(Request $request)
+    {
+        $user = $request->user();
+        $onceTasks = Task::with(['creator', 'taskAssignments.class', 'taskAssignments.teacher'])
+            ->where('type', 'once')
+            ->where(function ($query) use ($user) {
+                // تسک‌هایی که کاربر ایجاد کرده یا بهش انتساب داده شده
+                $query->where('created_by', $user->id)
+                    ->orWhereHas('taskAssignments', function ($q) use ($user) {
+                        $q->where('teacher_id', $user->id);
+                    });
+            })
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+
+        // تسک‌های روتین (routine) - ۱۰ تای آخر
+        $routineTasks = Task::with(['creator', 'routineSchedule', 'taskAssignments.class', 'taskAssignments.teacher'])
+            ->where('type', 'routine')
+            ->where(function ($query) use ($user) {
+                // تسک‌هایی که کاربر ایجاد کرده یا بهش انتساب داده شده
+                $query->where('created_by', $user->id)
+                    ->orWhereHas('taskAssignments', function ($q) use ($user) {
+                        $q->where('teacher_id', $user->id);
+                    });
+            })
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'once_tasks' => [
+                    'count' => $onceTasks->count(),
+                    'tasks' => $onceTasks
+                ],
+                'routine_tasks' => [
+                    'count' => $routineTasks->count(),
+                    'tasks' => $routineTasks
+                ],
+                'total' => $onceTasks->count() + $routineTasks->count()
+            ]
+        ], 200);
+    }
+
     public function getColorPalette()
     {
         return response()->json([
@@ -240,6 +443,7 @@ class TaskController extends Controller
             $validated = $request->validate([
                 'title' => 'sometimes|required|string|max:200',
                 'labels' => 'nullable|array',
+                'status' => 'nullable|string',
                 'color_code' => [
                     'sometimes',
                     'required',
@@ -401,7 +605,7 @@ class TaskController extends Controller
     /**
      * حذف وظیفه (به همراه همه وابستگی‌ها)
      */
-    public function destroy(Request $request,$id, NotificationService $notifications)
+    public function destroy(Request $request, $id, NotificationService $notifications)
     {
         $task = Task::find($id);
 

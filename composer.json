@@ -40,6 +40,7 @@
             "Modules\\Skills\\": "Modules/Skills/app/",
             "Modules\\Task\\": "Modules/Task/app/",
             "Modules\\Message\\": "Modules/Message/app/",
+            "Modules\\Activity\\": "Modules/Activity/app/",
             "Modules\\Settings\\": "Modules/Settings/app/",
             "Database\\Seeders\\": "database/seeders/"
         }

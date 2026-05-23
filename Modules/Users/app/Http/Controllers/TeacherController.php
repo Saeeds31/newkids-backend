@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Modules\Notifications\Services\NotificationService;
 use Modules\Users\Http\Requests\TeacherStoreRequest;
+use Modules\Users\Models\Permission;
 use Modules\Users\Models\Role;
 use Modules\Users\Models\User;
 
@@ -67,21 +68,23 @@ class TeacherController extends Controller
 
             $teacher = User::create($teacherData);
 
-            // اختصاص نقش teacher
             $teacherRole = Role::where('slug', 'teacher')->first();
             $specialRole = Role::create([
                 'name' => "نقش ویژه معلم با آیدی " . $teacher->id,
                 'is_system' => true,
                 'slug' => "role_teacher_" . $teacher->id
             ]);
-            $teacher->roles()->attach($specialRole);
             if ($teacherRole) {
                 $teacher->roles()->attach($teacherRole->id);
             }
             if ($specialRole) {
                 $teacher->roles()->attach($specialRole->id);
             }
-           
+            $specialPer = Permission::create([
+                'name' =>  "notification_user_" . $teacher->id,
+                'label' => "ناتفیکیشن های مربی" . $teacher->full_name,
+            ]);
+            $specialRole->permissions()->attach($specialPer);
             DB::commit();
 
             // بارگذاری روابط
@@ -289,70 +292,38 @@ class TeacherController extends Controller
         }
     }
 
-    /**
-     * فعال کردن معلم
-     */
-    public function activate($id, NotificationService $notifications)
-    {
-        $teacher = User::withRole('teacher')->find($id);
-
-        if (!$teacher) {
-            return response()->json([
-                'success' => false,
-                'message' => 'معلم مورد نظر یافت نشد'
-            ], 404);
-        }
-
-        $teacher->update(['is_active' => true]);
-
-        $notifications->create(
-            "فعالسازی معلم",
-            "معلم {$teacher->full_name} فعال شد",
-            "notification_teacher",
-            [
-                'teacher_id' => $teacher->id,
-                'maker' => request()->user()->full_name
-            ]
-        );
-
-        return response()->json([
-            'success' => true,
-            'message' => 'معلم با موفقیت فعال شد',
-            'data' => $teacher
-        ], 200);
-    }
 
     /**
      * دریافت دانش‌آموزان تحت نظر یک معلم
      */
-    public function getStudents($id)
+    public function getStudents(Request $request)
     {
-        $teacher = User::withRole('teacher')->find($id);
+        $user = $request->user();
 
-        if (!$teacher) {
+        if (!$user) {
             return response()->json([
                 'success' => false,
                 'message' => 'معلم مورد نظر یافت نشد'
             ], 404);
         }
 
-        $students = $teacher->students()
+        $students = $user->students()
             ->with(['class.grade'])
             ->get();
 
         return response()->json([
             'success' => true,
             'data' => $students,
-            'teacher' => $teacher->only(['id', 'first_name', 'last_name', 'full_name'])
+            'message' => 'لیست دانش آموزان شما'
         ], 200);
     }
 
     /**
      * دریافت کلاس‌های تحت تدریس معلم
      */
-    public function getClasses($id)
+    public function getClasses(Request $request)
     {
-        $teacher = User::withRole('teacher')->find($id);
+        $teacher = $request->user();
 
         if (!$teacher) {
             return response()->json([
@@ -361,24 +332,33 @@ class TeacherController extends Controller
             ], 404);
         }
 
-        $classes = $teacher->classes()
+        // گرفتن کلاس‌ها با زمان‌بندی‌های مربوطه
+        $classes = $teacher->teachingClasses()
             ->with(['grade'])
             ->get();
+
+        // برای هر کلاس، زمان‌بندی‌های تدریس رو اضافه کن
+        foreach ($classes as $class) {
+            $class->teaching_times = $teacher->classSubjectTimes()
+                ->where('class_id', $class->id)
+                ->with(['subject'])
+                ->orderBy('day_of_week')
+                ->orderBy('start_time')
+                ->get();
+        }
 
         return response()->json([
             'success' => true,
             'data' => $classes,
-            'teacher' => $teacher->only(['id', 'first_name', 'last_name', 'full_name'])
+            'message' => "لیست کلاس‌ها و زمان‌های تدریس"
         ], 200);
     }
-
     /**
      * دریافت وظایف محول شده به معلم
      */
-    public function getTasks($id, Request $request)
+    public function getTasks(Request $request)
     {
-        $teacher = User::withRole('teacher')->find($id);
-
+        $teacher = $request->user();
         if (!$teacher) {
             return response()->json([
                 'success' => false,
@@ -392,33 +372,12 @@ class TeacherController extends Controller
                 return $query->where('status', $status);
             })
             ->orderBy('created_at', 'desc')
-            ->get();
+            ->paginate(20);
 
         return response()->json([
             'success' => true,
             'data' => $tasks,
-            'teacher' => $teacher->only(['id', 'first_name', 'last_name', 'full_name'])
-        ], 200);
-    }
-
-    /**
-     * دریافت آمار کلی معلمان
-     */
-    public function statistics()
-    {
-        $statistics = [
-            'total_teachers' => User::withRole('teacher')->count(),
-            'active_teachers' => User::withRole('teacher')->active()->count(),
-            'inactive_teachers' => User::withRole('teacher')->where('is_active', false)->count(),
-            'recent_teachers' => User::withRole('teacher')
-                ->orderBy('created_at', 'desc')
-                ->limit(5)
-                ->get(['id', 'first_name', 'last_name', 'mobile', 'created_at'])
-        ];
-
-        return response()->json([
-            'success' => true,
-            'data' => $statistics
+            'message' => 'لیست وظایف شما'
         ], 200);
     }
 }

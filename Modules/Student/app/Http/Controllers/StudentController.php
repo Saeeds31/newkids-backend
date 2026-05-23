@@ -13,6 +13,7 @@ use Modules\Notifications\Services\NotificationService;
 use Modules\Student\Http\Requests\StudentStoreRequest;
 use Modules\Student\Http\Requests\StudentUpdateRequest;
 use Modules\Student\Models\Student;
+use Modules\Users\Models\Permission;
 use Modules\Users\Models\Role;
 use Modules\Users\Models\User;
 
@@ -99,7 +100,15 @@ class StudentController extends Controller
                 'class_id' => $student->class_id
             ]
         );
-
+        $parentRole = Role::where('slug', 'parent')->first();
+        if ($parentRole) {
+            $parent->roles()->attach($parentRole->id);
+        }
+        $specialPer = Permission::create([
+            'name' =>  "notification_student_" . $student->id,
+            'label' => "ناتفیکیشن های دانش آموز" . $student->full_name,
+        ]);
+        $parentRole->permissions()->attach($specialPer);
         return response()->json([
             'success' => true,
             'message' => 'دانش‌آموز و والد با موفقیت ایجاد شدند',

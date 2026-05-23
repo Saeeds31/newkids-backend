@@ -42,6 +42,7 @@ class RunController extends Controller
             'is_system' => true,
             'slug' => 'parent',
         ]);
+   
         $user->roles()->sync([$roleSuperAdmin]);
         return response()->json(['message' => 'تنظیمات اولیه انجام شد پرمیژن ها را اجرا کنید']);
     }

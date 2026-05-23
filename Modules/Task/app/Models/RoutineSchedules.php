@@ -222,34 +222,7 @@ class RoutineSchedules extends Model
         return $occurrences;
     }
 
-    /**
-     * ایجاد خودکار وهله‌های تسک برای یک انتساب خاص
-     */
-    public function createOccurrencesForAssignment($taskAssignmentId, $limit = 52)
-    {
-        $occurrences = $this->getUpcomingOccurrences($limit);
-        $created = [];
-
-        foreach ($occurrences as $occurrence) {
-            $existing = TaskOccurrences::where('task_assignment_id', $taskAssignmentId)
-                ->where('start_at', $occurrence['start_at'])
-                ->exists();
-
-            if (!$existing) {
-                $taskOccurrence = TaskOccurrences::create([
-                    'task_assignment_id' => $taskAssignmentId,
-                    'start_at' => $occurrence['start_at'],
-                    'end_at' => $occurrence['end_at'],
-                    'status' => 'pending',
-                ]);
-
-                $created[] = $taskOccurrence;
-            }
-        }
-
-        return $created;
-    }
-
+  
     /**
      * دریافت تعداد کل وهله‌های قابل تولید تا تاریخ انقضا
      */

@@ -5,9 +5,12 @@ use Modules\Users\Http\Controllers\AuthController;
 use Modules\Users\Http\Controllers\RolesController;
 use Modules\Users\Http\Controllers\UsersController;
 
-Route::post('v1/check-login', [AuthController::class, 'CheckLogin'])->name("CheckLogin");
-Route::middleware(['auth:sanctum'])->prefix('v1/admin')->group(function () {
-    
+Route::prefix('v1/public')->group(function () {
+    Route::post('/check-login', [AuthController::class, 'CheckLogin'])->name("CheckLogin");
+    Route::post('/login-password', [AuthController::class, 'loginWithPassword']);
+    Route::post('/send-otp', [AuthController::class, 'publicSendToken']);
+    Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
+    Route::get('/logout', [AuthController::class, 'logoutUserFront']);
 });
 
 // 
@@ -26,19 +29,12 @@ Route::post('v1/admin/send-token', [AuthController::class, 'adminSendToken'])->n
 Route::post('v1/employer/login', [AuthController::class, 'employerLogin'])->name("employerLogin");
 Route::post('v1/employer/send-token', [AuthController::class, 'adminSendToken'])->name("adminSendToken");
 
-Route::prefix('v1/front')->group(function () {
-    Route::post('/check-mobile', [AuthController::class, 'checkMobile']);
-    Route::post('/login-password', [AuthController::class, 'loginWithPassword']);
-    Route::post('/send-otp', [AuthController::class,'sendOtpAgain']);
-    Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
-    Route::post('/register', [AuthController::class, 'register']);
-    Route::get('/user/logout', [AuthController::class, 'logoutUserFront']);
-});
+
 Route::middleware(['auth:sanctum'])->prefix('v1/front')->group(function () {
     Route::get('/user/profile', [UsersController::class, 'userProfile']);
     Route::put('/user/profile', [UsersController::class, 'updateProfile']);
 });
 
-Route::prefix('v1')->middleware(['auth:sanctum'])->group(function () {
+Route::prefix('v1/')->middleware(['auth:sanctum'])->group(function () {
     require_once __DIR__ . '/teacher.php';
 });

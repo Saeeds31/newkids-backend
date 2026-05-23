@@ -44,30 +44,21 @@ class User extends Authenticatable
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
     ];
+    public function getPermissionsAttribute()
+    {
+        return $this->roles
+            ->map->permissions
+            ->flatten()
+            ->pluck('name')
+            ->unique()
+            ->values()
+            ->toArray();
+    }
 
-    // ============ ثابت‌ها (Constants) ============
-
-    const ROLE_ADMIN = 'admin';
-    const ROLE_SUPERVISOR = 'supervisor';
-    const ROLE_TEACHER = 'teacher';
-    const ROLE_PARENT = 'parent';
-
-    const ROLES = [
-        self::ROLE_ADMIN => 'مدیر',
-        self::ROLE_SUPERVISOR => 'ناظم',
-        self::ROLE_TEACHER => 'معلم',
-        self::ROLE_PARENT => 'والد',
-    ];
-
-    const ROLE_COLORS = [
-        self::ROLE_ADMIN => '#EF4444',     // قرمز
-        self::ROLE_SUPERVISOR => '#F59E0B', // نارنجی
-        self::ROLE_TEACHER => '#3B82F6',    // آبی
-        self::ROLE_PARENT => '#10B981',     // سبز
-    ];
-
-    // ============ ارتباطات (Relationships) ============
-
+    public function hasPermission($permission)
+    {
+        return $this->permissions()->contains('name', $permission);
+    }
 
     /**
      * ارتباط با نقش ایجاد شده
@@ -84,9 +75,6 @@ class User extends Authenticatable
         return $this->roles()->where('slug', $roleName)->exists();
     }
 
-    /**
-     * ارتباط با تسک‌های ایجاد شده (برای مدیر و ناظم)
-     */
     public function createdTasks()
     {
         return $this->hasMany(Task::class, 'created_by');
@@ -101,22 +89,7 @@ class User extends Authenticatable
         return $this->hasMany(TaskAssignment::class, 'teacher_id');
     }
 
-    /**
-     * ارتباط با تسک‌های اختصاص داده شده (از طریق task_assignments)
-     */
-    public function assignedTasks()
-    {
-        return $this->belongsToMany(
-            Task::class,
-            'task_assignments',
-            'teacher_id',
-            'task_id'
-        );
-    }
-
-    /**
-     * ارتباط با زمان‌بندی کلاس‌ها (برای معلم)
-     */
+   
     public function classSubjectTimes()
     {
         return $this->hasMany(ClassSubjectTime::class, 'teacher_id');
@@ -277,7 +250,7 @@ class User extends Authenticatable
     }
 
     // وظایف محول شده به این معلم
-    
+
     /**
      * بررسی آیا کاربر فعال است
      */
@@ -336,39 +309,7 @@ class User extends Authenticatable
             ->groupBy('class_id');
     }
 
-    /**
-     * دریافت تسک‌های فعال برای معلم
-     */
-    public function getActiveTasksForTeacher()
-    {
-        return $this->taskAssignments()
-            ->with(['task', 'class', 'taskOccurrences' => function ($q) {
-                $q->where('status', 'open')
-                    ->where('start_at', '<=', now())
-                    ->where('end_at', '>=', now());
-            }])
-            ->whereHas('taskOccurrences', function ($q) {
-                $q->where('status', 'open')
-                    ->where('start_at', '<=', now())
-                    ->where('end_at', '>=', now());
-            })
-            ->get();
-    }
 
-    /**
-     * دریافت تسک‌های در انتظار برای معلم
-     */
-    public function getPendingTasksForTeacher()
-    {
-        return $this->taskAssignments()
-            ->with(['task', 'class', 'taskOccurrences' => function ($q) {
-                $q->where('status', 'pending');
-            }])
-            ->whereHas('taskOccurrences', function ($q) {
-                $q->where('status', 'pending');
-            })
-            ->get();
-    }
 
     /**
      * دریافت فرزندان یک والد به همراه نتایج اخیر

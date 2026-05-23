@@ -6,7 +6,6 @@ use Modules\Grade\Models\Grade;
 use Modules\Student\Models\Student;
 use Modules\Subject\Models\Subject;
 use Modules\Task\Models\TaskAssignment;
-use Modules\Task\Models\TaskOccurrences;
 use Modules\Users\Models\User;
 
 class Classes extends Model
@@ -85,21 +84,7 @@ class Classes extends Model
                     ->distinct();
     }
 
-    /**
-     * دریافت تمام وهله‌های تسک مربوط به این کلاس
-     * (از طریق task_assignments -> task_occurrences)
-     */
-    public function taskOccurrences()
-    {
-        return $this->hasManyThrough(
-            TaskOccurrences::class,
-            TaskAssignment::class,
-            'class_id',        // کلید خارجی در task_assignments
-            'task_assignment_id', // کلید خارجی در task_occurrences
-            'id',              // کلید محلی در classes
-            'id'               // کلید محلی در task_assignments
-        );
-    }
+ 
 
     // ============ متدهای کمکی (Helpers) ============
 
@@ -130,14 +115,5 @@ class Classes extends Model
             ->exists();
     }
 
-    /**
-     * دریافت لیست تسک‌های فعال (باز) برای این کلاس
-     */
-    public function getActiveTasks()
-    {
-        return $this->taskOccurrences()
-            ->where('status', 'open')
-            ->with('taskAssignment.task')
-            ->get();
-    }
+  
 }

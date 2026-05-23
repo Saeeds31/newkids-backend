@@ -23,6 +23,7 @@ class Task extends Model
         'description',
         'created_by',
         'type',
+        'status',
         'start_date',
         'end_date',
     ];
@@ -126,36 +127,9 @@ class Task extends Model
         )->distinct();
     }
 
-    /**
-     * ارتباط با وهله‌های تسک (از طریق task_assignments)
-     */
-    public function taskOccurrences()
-    {
-        return $this->hasManyThrough(
-            TaskOccurrences::class,
-            TaskAssignment::class,
-            'task_id',
-            'task_assignment_id',
-            'id',
-            'id'
-        );
-    }
 
-    /**
-     * ارتباط با نتایج تسک (از طریق task_occurrences)
-     */
-    public function taskResults()
-    {
-        return $this->hasManyThrough(
-            TaskResults::class,
-            TaskOccurrences::class,
-            'task_assignment_id',
-            'task_occurrence_id',
-            'id',
-            'id'
-        );
-    }
 
+ 
 
 
     /**
@@ -271,13 +245,6 @@ class Task extends Model
         return in_array($this->current_status, ['active', 'pending']);
     }
 
-    /**
-     * دریافت تعداد وهله‌های اجرا شده این تسک
-     */
-    public function getOccurrencesCountAttribute()
-    {
-        return $this->taskOccurrences()->count();
-    }
 
     /**
      * دریافت تعداد نتایج ثبت شده برای این تسک

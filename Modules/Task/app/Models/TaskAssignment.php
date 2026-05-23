@@ -66,29 +66,7 @@ class TaskAssignment extends Model
         return $this->belongsTo(User::class, 'assigned_by');
     }
 
-    /**
-     * ارتباط با وهله‌های تسک
-     * هر انتساب می‌تواند چندین وهله داشته باشد (برای تسک‌های روتین)
-     */
-    public function taskOccurrences()
-    {
-        return $this->hasMany(TaskOccurrences::class, 'task_assignment_id');
-    }
 
-    /**
-     * ارتباط با نتایج تسک (از طریق وهله‌ها)
-     */
-    public function taskResults()
-    {
-        return $this->hasManyThrough(
-            TaskResults::class,
-            TaskOccurrences::class,
-            'task_assignment_id',
-            'task_occurrence_id',
-            'id',
-            'id'
-        );
-    }
 
     /**
      * ارتباط با دانش‌آموزان (از طریق کلاس)
@@ -116,51 +94,9 @@ class TaskAssignment extends Model
         return "{$this->task->title} - {$this->class->full_name} - {$this->teacher->first_name} {$this->teacher->last_name}";
     }
 
-    /**
-     * دریافت آخرین وهله فعال این انتساب
-     */
-    public function getLatestActiveOccurrenceAttribute()
-    {
-        return $this->taskOccurrences()
-            ->where('status', 'open')
-            ->orderBy('start_at', 'desc')
-            ->first();
-    }
 
-    /**
-     * دریافت اولین وهله باز (برای تسک‌های روتین)
-     */
-    public function getCurrentOpenOccurrenceAttribute()
-    {
-        $now = now();
 
-        return $this->taskOccurrences()
-            ->where('status', 'open')
-            ->where('start_at', '<=', $now)
-            ->where('end_at', '>=', $now)
-            ->first();
-    }
 
-    /**
-     * دریافت تمام وهله‌های بسته شده این انتساب
-     */
-    public function getClosedOccurrencesAttribute()
-    {
-        return $this->taskOccurrences()
-            ->where('status', 'closed')
-            ->orderBy('end_at', 'desc')
-            ->get();
-    }
-
-    /**
-     * دریافت تعداد وهله‌های تکمیل شده
-     */
-    public function getCompletedOccurrencesCountAttribute()
-    {
-        return $this->taskOccurrences()
-            ->where('status', 'closed')
-            ->count();
-    }
 
     /**
      * دریافت تعداد دانش‌آموزانی که حداقل یک نتیجه ثبت کرده‌اند
@@ -216,61 +152,8 @@ class TaskAssignment extends Model
         return true;
     }
 
-    /**
-     * ایجاد وهله جدید برای این انتساب (برای تسک‌های روتین)
-     */
-    public function createNewOccurrence($startAt, $endAt)
-    {
-        return TaskOccurrences::create([
-            'task_assignment_id' => $this->id,
-            'start_at' => $startAt,
-            'end_at' => $endAt,
-            'status' => 'pending',
-        ]);
-    }
 
-    /**
-     * بستن تمام وهله‌های باز این انتساب
-     */
-    public function closeAllOpenOccurrences()
-    {
-        return $this->taskOccurrences()
-            ->where('status', 'open')
-            ->update(['status' => 'closed']);
-    }
 
-    /**
-     * دریافت آمار کامل این انتساب
-     */
-    public function getStatistics()
-    {
-        $totalStudents = $this->class->students()->count();
-        $occurrences = $this->taskOccurrences;
-        $totalOccurrences = $occurrences->count();
-        $closedOccurrences = $occurrences->where('status', 'closed')->count();
-        $openOccurrences = $occurrences->where('status', 'open')->count();
-
-        $totalResults = $this->taskResults()->count();
-        $averageScore = $this->taskResults()
-            ->whereNotNull('status_id')
-            ->with('status')
-            ->get()
-            ->avg(function ($result) {
-                return $result->status ? $result->status->points : 0;
-            }) ?? 0;
-
-        return [
-            'total_students' => $totalStudents,
-            'total_occurrences' => $totalOccurrences,
-            'closed_occurrences' => $closedOccurrences,
-            'open_occurrences' => $openOccurrences,
-            'total_results' => $totalResults,
-            'average_score' => round($averageScore, 2),
-            'completion_rate' => $totalStudents > 0
-                ? round(($totalResults / ($totalOccurrences * $totalStudents)) * 100, 2)
-                : 0,
-        ];
-    }
     
         // ============ اسکوپ‌ها (Scopes) ============
 
@@ -290,29 +173,9 @@ class TaskAssignment extends Model
         return $query->where('class_id', $classId);
     }
 
-    /**
-     * اسکوپ انتساب‌هایی که وهله باز دارند
-     */
-    public function scopeWithOpenOccurrence($query)
-    {
-        return $query->whereHas('taskOccurrences', function ($q) {
-            $q->where('status', 'open');
-        });
-    }
+ 
 
-    /**
-     * اسکوپ انتساب‌هایی که در حال حاضر فعال هستند (وهله باز در زمان حال)
-     */
-    public function scopeActiveNow($query)
-    {
-        $now = now();
 
-        return $query->whereHas('taskOccurrences', function ($q) use ($now) {
-            $q->where('status', 'open')
-                ->where('start_at', '<=', $now)
-                ->where('end_at', '>=', $now);
-        });
-    }
 
     /**
      * اسکوپ انتساب‌های تسک‌های روتین

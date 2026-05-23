@@ -17,6 +17,7 @@ return new class extends Migration
             $table->string('labels')->nullable();
             $table->string('color_code')->nullable();
             $table->text('description')->nullable();
+            $table->enum('status', ['todo','doing', 'done', 'closed'])->default('todo');
             $table->foreignId('created_by')->constrained('users');
             $table->enum('type', ['routine', 'once']);
             $table->timestamp('start_date')->nullable();

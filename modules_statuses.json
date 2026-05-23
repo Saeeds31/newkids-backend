@@ -42,5 +42,6 @@
     "Traits": true,
     "Skills": true,
     "Task": true,
-    "Message": true
+    "Message": true,
+    "Activity": true
 }

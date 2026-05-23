@@ -37,27 +37,8 @@ class AuthController extends Controller
             'role' => $user->roles->select(['slug', 'name']),
         ], 200);
     }
-    public function checkMobile(Request $request)
-    {
-        $request->validate([
-            'mobile' => 'required|digits:11',
-        ]);
 
-        $user = User::where('mobile', $request->mobile)->first();
 
-        if ($user) {
-            return response()->json(['status' => 'login']);
-        }
-
-        $this->sendOtp($request->mobile);
-        $otp = Otp::where('mobile', $request->mobile)->first();
-        return response()->json([
-            'token' => $otp->token,
-            'status' => 'register'
-        ]);
-    }
-
-    // 2) ورود با پسورد
     public function loginWithPassword(Request $request)
     {
         $data = $request->validate([
@@ -65,20 +46,48 @@ class AuthController extends Controller
             'password' => 'required|min:6',
         ]);
 
-        $user = User::where('mobile', $data['mobile'])->first();
-
-        if (!$user || !Hash::check($data['password'], $user->password)) {
-            return response()->json(['message' => 'Invalid credentials'], 401);
+        $user = User::with(['roles'])->where('mobile', $data['mobile'])->first();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'شماره پیدا نشد'
+            ], 404);
         }
-
+        if (!$user || !Hash::check($data['password'], $user->password)) {
+            return response()->json([
+                'message' => 'رمز عبور اشتباه است',
+                'success' => false
+            ], 401);
+        }
         $token = $user->createToken('auth_token')->plainTextToken;
+        $permissions = $user->permissions;
         return response()->json([
             'user' => $user,
+            'success' => true,
+            'permissions' => $permissions,
+            'role' => $user->roles->select(['slug', 'name']),
             'token' => $token,
         ]);
     }
+    public function publicSendToken(Request $request)
+    {
+        $validated = $request->validate([
+            'mobile' => 'required|string|size:11'
+        ]);
+        $user = User::where('mobile', $validated['mobile'])->first();
+        if ($user) {
+            $this->sendOtp($request->mobile);
+            return response()->json([
+                'success' => true,
+                'message' => 'کد یکبار مصرف ارسال شد.'
+            ]);
+        }
+        return response()->json([
+            'success' => false,
+            'message' => 'شما مجاز به انجام این عملیات نیستید.'
+        ], 403);
+    }
 
-    // 3) ارسال OTP (هم برای لاگین هم برای ثبت‌نام)
 
     public function sendOtp($mobile)
     {
@@ -96,18 +105,6 @@ class AuthController extends Controller
         return true;
     }
 
-    public  function sendOtpAgain(Request $request)
-    {
-        $request->validate(['mobile' => 'required|digits:11']);
-        $this->sendOtp($request->mobile);
-        $otp = Otp::where('mobile', $request->mobile)->first();
-        return response()->json([
-            'message' => 'OTP sent',
-            'success' => true,
-            'token' => $otp->token
-        ]);
-    }
-    // 4) بررسی OTP
     public function verifyOtp(Request $request)
     {
         $data = $request->validate([
@@ -122,75 +119,34 @@ class AuthController extends Controller
             ->first();
 
         if (!$otp) {
-            return response()->json(['message' => 'Invalid or expired OTP'], 422);
+            return response()->json([
+                'message' => 'کد یکبار مصرف منقضی شده است',
+                'success' => false
+            ], 422);
         }
 
         $user = User::where('mobile', $mobile)->first();
         if ($user) {
             $token = $user->createToken('auth_token')->plainTextToken;
             $otp->delete();
+            $permissions = $user->permissions;
             return response()->json([
+                'success' => true,
                 'user' => $user,
                 'token' => $token,
-                'status' => 'login'
+                'permissions' => $permissions,
             ]);
         }
 
         return response()->json(['status' => 'need_register']);
     }
-    // 5) ثبت‌نام بعد از تایید OTP
-
-    public function register(Request $request, NotificationService $notifications)
-    {
-        $data = $request->validate([
-            'mobile'   => 'required|digits:11|unique:users,mobile',
-            'password' => 'required|min:6',
-            'full_name' => 'required|string|min:3',
-        ]);
-
-        // بررسی OTP معتبر
-        $mobile = trim($data['mobile']);
-        $otp = Otp::where('mobile', $mobile)
-            ->where('expires_at', '>', now())
-            ->first();
-
-        if (!$otp) {
-            return response()->json(['message' => 'OTP not verified or expired'], 422);
-        }
-
-        $user = User::create([
-            'mobile'    => $mobile,
-            'password'  => Hash::make($data['password']),
-            'full_name' => $data['full_name'],
-        ]);
-
-        $customerRoleId = Role::where('slug', 'customer')->value('id');
-        $user->roles()->sync([$customerRoleId]);
-
-        Wallet::create([
-            'user_id' => $user->id,
-            'balance' => 0,
-        ]);
-        $notifications->create(
-            " ثبت نام  کاربر",
-            " کاربر  {$user->full_name}در سیستم ثبت نام  شد",
-            "notifications_user",
-            ['users' => $user->id]
-        );
-        $otp->delete(); // حذف OTP بعد از ثبت‌نام
-        $token = $user->createToken('auth_token')->plainTextToken;
-
-        return response()->json([
-            'user'  => $user,
-            'token' => $token,
-        ]);
-    }
+ 
 
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
 
-        return response()->json(['message' => 'Logged out']);
+        return response()->json(['message' => 'با موفقیت خارج شد']);
     }
     public function adminSendToken(Request $request)
     {

@@ -4,7 +4,6 @@ namespace Modules\Task\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\SoftDeletes;
 use Modules\Class\Models\Classes;
 use Modules\Message\Models\Message;
 use Modules\Student\Models\Student;
@@ -16,12 +15,12 @@ use Modules\Users\Models\User;
 class TaskResults extends Model
 {
 
-    use HasFactory, SoftDeletes;
+    use HasFactory;
 
     protected $table = 'task_results';
 
     protected $fillable = [
-        'task_occurrence_id',
+        'task_id',
         'student_id',
         'description',
         'recorded_by',
@@ -35,19 +34,15 @@ class TaskResults extends Model
 
     // ============ ارتباطات (Relationships) ============
 
-    /**
-     * ارتباط با وهله تسک
-     * هر نتیجه متعلق به یک وهله از تسک است
-     */
-    public function taskOccurrence()
-    {
-        return $this->belongsTo(TaskOccurrences::class, 'task_occurrence_id');
-    }
 
     /**
      * ارتباط با دانش‌آموز
      * هر نتیجه متعلق به یک دانش‌آموز است
      */
+    public function task()
+    {
+        return $this->belongsTo(Task::class);
+    }
     public function student()
     {
         return $this->belongsTo(Student::class, 'student_id');
@@ -61,21 +56,7 @@ class TaskResults extends Model
         return $this->belongsTo(User::class, 'recorded_by');
     }
 
-    /**
-     * ارتباط با وضعیت کلی تسک (از طریق task_occurrence -> task)
-     * توجه: این یک ارتباط غیرمستقیم است
-     */
-    public function task()
-    {
-        return $this->hasOneThrough(
-            Task::class,
-            TaskOccurrences::class,
-            'id',
-            'id',
-            'task_occurrence_id',
-            'task_assignment_id'
-        );
-    }
+
 
 
     /**

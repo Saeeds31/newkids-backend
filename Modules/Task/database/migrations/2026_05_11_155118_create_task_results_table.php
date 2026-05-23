@@ -13,12 +13,12 @@ return new class extends Migration
     {
         Schema::create('task_results', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('task_occurrence_id')->constrained()->onDelete('cascade');
+            $table->foreignId('task_id')->constrained()->onDelete('cascade');
             $table->foreignId('student_id')->constrained()->onDelete('cascade');
             $table->text('description')->nullable();
             $table->foreignId('recorded_by')->constrained('users');
             $table->timestamps();
-            $table->unique(['task_occurrence_id', 'student_id'], 'task_result_unique');
+            $table->unique(['task_id', 'student_id'], 'task_result_unique');
         });
     }
 
