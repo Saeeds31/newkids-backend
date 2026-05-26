@@ -29,7 +29,7 @@ class TaskController extends Controller
                 'evaluations' => 'required|array|min:1',
                 'evaluations.*.criterion_type' => 'required|string|in:trait,skill',
                 'evaluations.*.criterion_id' => 'required|exists:task_evaluation_criteria,id',
-                'evaluations.*.score' => 'required|numeric|min:0|max:100',
+                'evaluations.*.score' => 'nullable|numeric|min:0|max:100',
             ]);
 
             $task = Task::with([
@@ -83,9 +83,6 @@ class TaskController extends Controller
                 'description' => $validated['description'] ?? null,
                 'recorded_by' => $teacher->id,
             ]);
-            $totalScore = 0;
-            $maxPossibleScore = 0;
-            $evaluationsList = [];
 
             foreach ($validated['evaluations'] as $evaluation) {
                 $criterion = TaskEvaluationCriteria::find($evaluation['criterion_id']);

@@ -34,7 +34,7 @@ class RolesController extends Controller
     // لیست نقش‌ها
     public function index()
     {
-        $roles = Role::where("is_system", "!=", "1")->with(['permissions'])
+        $roles = Role::with(['permissions'])
             ->get();
         return response()->json(
             [

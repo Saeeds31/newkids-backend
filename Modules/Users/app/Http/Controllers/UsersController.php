@@ -5,6 +5,7 @@ namespace Modules\Users\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Modules\Users\Http\Requests\UserStoreRequest;
 use Modules\Users\Http\Requests\UserUpdateRequest;
 use Modules\Users\Models\Role;
@@ -61,25 +62,26 @@ class UsersController extends Controller
     }
     public function index(Request $request)
     {
-        $query = User::with(['roles', 'addresses', 'wallet']);
+        $query = User::with(['roles',  'wallet']);
 
         // اگر پارامتر search ارسال شده باشد
         if ($search = $request->get('search')) {
             $query->where(function ($q) use ($search) {
-                $q->where('full_name', 'like', "%{$search}%")
+                $q->where('first_name', 'like', "%{$search}%")
+                    ->where('last_name', 'like', "%{$search}%")
                     ->orWhere('mobile', 'like', "%{$search}%");
             });
         }
 
         $users = $query->whereHas('roles', function ($query) {
-            $query->whereNotIn('slug', ['employer', 'superAdmin']);
+            $query->whereNotIn('slug', ['superAdmin']);
         })->paginate(20);
 
         return response()->json($users);
     }
     public function getSupporter(Request $request)
     {
-        $query = User::with(['roles', 'addresses', 'wallet']);
+        $query = User::with(['roles',  'wallet']);
         if ($search = $request->get('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('full_name', 'like', "%{$search}%")
@@ -97,7 +99,7 @@ class UsersController extends Controller
     // لیست مدیران
     public function managerIndex(Request $request)
     {
-        $query = User::with(['roles', 'addresses', 'wallet']);
+        $query = User::with(['roles', 'wallet']);
         if ($search = $request->get('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('full_name', 'like', "%{$search}%")
@@ -105,7 +107,7 @@ class UsersController extends Controller
             });
         }
         $users = $query->whereHas('roles', function ($query) {
-            $query->whereNotIn('slug', ['customer', 'employer', 'superAdmin']);
+            $query->whereNotIn('slug', ['user', 'superAdmin']);
         })->get();
         return response()->json($users);
     }
@@ -113,26 +115,34 @@ class UsersController extends Controller
     public function store(UserStoreRequest $request)
     {
         $data = $request->validated();
-        $customerRoleId = Role::where('slug', 'customer')->value('id');
-        if (!$customerRoleId) {
-            return response()->json([
-                'message' => 'نقش پیشفرض مشتری وجود ندارد لطفا این نقش را در دیتابیس تعریف کنید'
-            ], 422);
+        $userRoleId = Role::where('slug', 'user')->value('id');
+        if (!$userRoleId) {
+            $newRole =  Role::create([
+                'name' => 'کاربر',
+                'is_system' => true,
+                'slug' => "user"
+            ]);
+            $userRoleId = $newRole->id;
         }
+        if ($request->hasFile('avatar')) {
+            $userAvatar = $request->file('avatar')->store('users/avatars', 'public');
+            $data['avatar'] = $userAvatar;
+        }
+
         $data['password'] = Hash::make($data['password']);
         $user = User::create($data);
+        $user->roles()->sync([$userRoleId]);
         Wallet::create([
             'user_id' => $user->id,
             'balance' =>  0,
         ]);
-        $user->roles()->sync([$customerRoleId]);
-        return response()->json($user->load(['roles', 'addresses', 'wallet']), 201);
+        return response()->json($user->load(['roles', 'wallet']), 201);
     }
 
     // نمایش یک کاربر
     public function show(User $user)
     {
-        return response()->json($user->load(['roles', 'addresses', 'wallet']));
+        return response()->json($user->load(['roles', 'wallet']));
     }
 
     // ویرایش کاربر
@@ -147,8 +157,15 @@ class UsersController extends Controller
         } else {
             unset($data['password']);
         }
+        if ($request->hasFile('avatar')) {
+            // حذف آواتار قبلی
+            if ($user->avatar && Storage::disk('public')->exists($user->avatar)) {
+                Storage::disk('public')->delete($user->avatar);
+            }
+            $data['avatar'] = $request->file('avatar')->store('users/avatars', 'public');
+        }
         $user->update($data);
-        return response()->json($user->load(['roles', 'addresses', 'wallet']));
+        return response()->json($user->load(['roles',  'wallet']));
     }
 
     // حذف کاربر

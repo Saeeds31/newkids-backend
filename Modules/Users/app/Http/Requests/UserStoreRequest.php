@@ -12,11 +12,12 @@ class UserStoreRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'full_name'     => ['required', 'string', 'max:255'],
+            'first_name'     => ['required', 'string', 'max:255'],
+            'last_name'     => ['required', 'string', 'max:255'],
             'mobile'        => ['required', 'string', 'size:11', 'unique:users,mobile'],
             'password'      => ['required', 'string', 'min:6'],
-            'national_code' => ['nullable', 'string', 'size:10'],
-            'birth_date'    => ['nullable', 'date'],
+            'avatar' => ['nullable', 'file', 'max:1024'],
+            'is_active'    => ['nullable', 'boolean'],
         ];
     }
 

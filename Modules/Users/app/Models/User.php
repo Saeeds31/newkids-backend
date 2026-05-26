@@ -17,6 +17,7 @@ use Modules\Task\Models\Task;
 use Modules\Task\Models\TaskAssignment;
 use Modules\Task\Models\TaskAssignment as ModelsTaskAssignment;
 use Modules\Task\Models\TaskResults;
+use Modules\Wallet\Models\Wallet;
 
 class User extends Authenticatable
 {
@@ -54,7 +55,10 @@ class User extends Authenticatable
             ->values()
             ->toArray();
     }
+    public function wallet(){
+        return $this->hasOne(Wallet::class);
 
+    }
     public function hasPermission($permission)
     {
         return $this->permissions()->contains('name', $permission);

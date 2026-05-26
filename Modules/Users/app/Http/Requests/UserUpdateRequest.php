@@ -13,11 +13,12 @@ class UserUpdateRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'full_name'     => ['sometimes', 'string', 'max:255'],
-            'mobile'        => ['sometimes', 'string', 'size:11', Rule::unique('users','mobile')->ignore($this->route('user'))],
+            'first_name'     => ['sometimes', 'string', 'max:255'],
+            'last_name'     => ['sometimes', 'string', 'max:255'],
+            'mobile'        => ['sometimes', 'string', 'size:11', Rule::unique('users', 'mobile')->ignore($this->route('user'))],
             'password'      => ['sometimes', 'string', 'min:6'],
-            'national_code' => ['sometimes', 'string', 'size:10'],
-            'birth_date'    => ['sometimes', 'date'],
+            'avatar' => ['sometimes', 'file', 'max:1024'],
+            'is_active'    => ['sometimes', 'boolean'],
         ];
     }
 
