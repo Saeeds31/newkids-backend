@@ -43,7 +43,19 @@ class StudentController extends Controller
      */
     public function store(StudentStoreRequest $request, NotificationService $notifications)
     {
-        $validated = $request->validated();
+        $validated = $request->validate([
+            'first_name' => 'required|string|max:50|min:2',
+            'parent_first_name' => 'required|string|max:50|min:2',
+            'last_name' => 'required|string|max:50|min:2',
+            'parent_last_name' => 'required|string|max:50|min:2',
+            'parent_password' => 'required|string|max:50|min:2',
+            
+            'national_code' => 'required|string|size:10|regex:/^\d{10}$/|unique:students,national_code',
+            'class_id' => 'required|exists:classes,id',
+            'parent_mobile' => 'required|string|size:11',
+            'birth_date' => 'required|date|before:today',
+            'student_avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+        ]);
 
         // 0. بررسی وجود والد با شماره موبایل
         $existingParent = User::where('mobile', $validated['parent_mobile'])->first();
