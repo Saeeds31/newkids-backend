@@ -4,6 +4,7 @@ namespace Modules\Skills\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Modules\Attribute\Models\Attribute;
 use Modules\Skills\Models\Skills;
 
 class SkillsUpdateRequest extends FormRequest
@@ -21,7 +22,7 @@ class SkillsUpdateRequest extends FormRequest
                 'required',
                 'string',
                 'max:100',
-                Rule::unique('traits', 'name')->ignore($skillId)
+                Rule::unique('attributes', 'name')->ignore($skillId)
             ],
             'key' => [
                 'sometimes',
@@ -29,7 +30,7 @@ class SkillsUpdateRequest extends FormRequest
                 'string',
                 'max:50',
                 'regex:/^[a-z_]+$/',
-                Rule::unique('traits', 'key')->ignore($skillId)
+                Rule::unique('attributes', 'key')->ignore($skillId)
             ],
             'description' => 'nullable|string|max:500',
             'icon' => 'nullable|string|max:50',
@@ -39,7 +40,7 @@ class SkillsUpdateRequest extends FormRequest
                 'string',
                 'regex:/^#[0-9A-Fa-f]{6}$/',
                 function ($attribute, $value, $fail) {
-                    if (!Skills::isValidColor($value)) {
+                    if (!Attribute::isValidColor($value)) {
                         $fail('کد رنگ انتخاب شده معتبر نیست. از رنگ‌های موجود استفاده کنید.');
                     }
                 },

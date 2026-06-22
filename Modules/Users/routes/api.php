@@ -38,3 +38,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1/front')->group(function () {
 Route::prefix('v1/')->middleware(['auth:sanctum'])->group(function () {
     require_once __DIR__ . '/teacher.php';
 });
+Route::prefix('v1/')->middleware(['auth:sanctum'])->group(function () {
+    require_once __DIR__ . '/parent.php';
+});

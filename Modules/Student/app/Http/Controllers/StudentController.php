@@ -10,8 +10,14 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Modules\Class\Models\Classes;
 use Modules\Notifications\Services\NotificationService;
+use Modules\Student\Http\Requests\DrugStudentRequest;
+use Modules\Student\Http\Requests\InfoStudentRequest;
+use Modules\Student\Http\Requests\MedicalStudentRequest;
 use Modules\Student\Http\Requests\StudentStoreRequest;
 use Modules\Student\Http\Requests\StudentUpdateRequest;
+use Modules\Student\Models\Info;
+use Modules\Student\Models\MedicalInformation;
+use Modules\Student\Models\Medication;
 use Modules\Student\Models\Student;
 use Modules\Users\Models\Permission;
 use Modules\Users\Models\Role;
@@ -38,6 +44,19 @@ class StudentController extends Controller
     public function store(StudentStoreRequest $request, NotificationService $notifications)
     {
         $validated = $request->validated();
+
+        // 0. بررسی وجود والد با شماره موبایل
+        $existingParent = User::where('mobile', $validated['parent_mobile'])->first();
+        if ($existingParent) {
+            return response()->json([
+                'success' => false,
+                'message' => 'والدی با این شماره موبایل قبلاً در سیستم ثبت شده است',
+                'errors' => [
+                    'parent_mobile' => ['شماره موبایل وارد شده تکراری است']
+                ]
+            ], 422);
+        }
+
         // 1. ابتدا کاربر والد را ایجاد می‌کنیم
         $parentData = [
             'first_name' => $validated['parent_first_name'],
@@ -61,6 +80,12 @@ class StudentController extends Controller
         if ($parentRole) {
             $parent->roles()->attach($parentRole->id);
         }
+        $customParentRole = Role::create([
+            'name' => 'والد ویژه - ' . $parent->full_name,
+            'slug' => 'parent_' . $parent->id,
+            'is_system' => true
+        ]);
+        $parent->roles()->syncWithoutDetaching([$customParentRole->id]);
 
         // 2. حالا دانش‌آموز را ایجاد می‌کنیم
         $studentData = [
@@ -118,15 +143,326 @@ class StudentController extends Controller
             ]
         ], 201);
     }
+    public function preRegister(StudentStoreRequest $request, NotificationService $notifications)
+    {
+        $parent = $request->user();
+        $validated = $request->validated();
+
+        $existingStudent = Student::where('national_code', $validated['national_code'])->first();
+        if ($existingStudent) {
+            return response()->json([
+                'success' => false,
+                'message' => 'این دانش‌آموز قبلاً در سیستم ثبت شده است',
+                'errors' => ['national_code' => ['کد ملی وارد شده تکراری است']]
+            ], 422);
+        }
+
+        $studentCode = $this->generateStudentCode();
+        while (Student::where('student_code', $studentCode)->exists()) {
+            $studentCode = $this->generateStudentCode();
+        }
+
+        $parentRole = Role::where('slug', 'parent')->first();
+
+        $customParentRole = Role::where('slug', 'parent_' . $parent->id)->first();
+
+        $basePermissions = $parentRole->permissions()->pluck('id');
+        $customParentRole->permissions()->attach($basePermissions);
+
+        $studentData = [
+            'first_name' => $validated['first_name'],
+            'last_name' => $validated['last_name'],
+            'national_code' => $validated['national_code'],
+            'class_id' => $validated['class_id'],
+            'birth_date' => $validated['birth_date'],
+            'parent_id' => $parent->id,
+            'student_code' => $studentCode,
+        ];
+
+        if ($request->hasFile('student_avatar')) {
+            $studentAvatarPath = $request->file('student_avatar')->store('students/avatars', 'public');
+            $studentData['avatar'] = $studentAvatarPath;
+        }
+
+        $student = Student::create($studentData);
+        $student->load(['class.grade', 'parent']);
+
+        // 7. ایجاد پرمیژن اختصاصی برای این دانش‌آموز
+        $specialPermission = Permission::create([
+            'name' => "notification_student_{$student->id}",
+            'label' => "نوتیفیکیشن‌های دانش‌آموز {$student->full_name}",
+        ]);
+        $customParentRole->permissions()->attach($specialPermission->id);
+
+        // 9. ثبت نوتیفیکیشن
+        $maker = $request->user();
+        $notifications->create(
+            "ثبت دانش‌آموز جدید",
+            "دانش‌آموز {$student->first_name} {$student->last_name} با والد {$parent->first_name} {$parent->last_name} در سیستم ثبت شد",
+            "notification_student",
+            [
+                'student_id' => $student->id,
+                'parent_id' => $parent->id,
+                'maker' => $maker->full_name,
+                'class_id' => $student->class_id
+            ]
+        );
+        $notifications->create(
+            "ثبت دانش‌آموز ",
+            "دانش‌آموز {$student->first_name} {$student->last_name} در سیستم ثبت شد",
+            "notification_student_" . $student->id,
+            [
+                'student_id' => $student->id,
+                'parent_id' => $parent->id,
+                'maker' => $maker->full_name,
+                'class_id' => $student->class_id
+            ]
+        );
 
 
+        return response()->json([
+            'success' => true,
+            'message' => 'دانش‌آموز و والد با موفقیت ایجاد شدند',
+            'data' => [
+                'student' => $student,
+                'parent' => $parent,
+            ]
+        ], 201);
+    }
+    public function saveInfo(InfoStudentRequest $request, NotificationService $notifications)
+    {
+        $user = $request->user();
+        $validatedData = $request->validated();
+        $studentId = $validatedData['student_id'];
+        $student = Student::firstOrFail($studentId);
+        $studentDetail = Info::where('student_id', $studentId)->first();
+
+        if ($studentDetail) {
+            $studentDetail->update($validatedData);
+            $message = 'رکورد با موفقیت بروزرسانی شد';
+            $statusCode = 200;
+            $notifications->create(
+                "ویرایش اطلاعات دانش‌آموز ",
+                "اطلاعات دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} ویرایش شد",
+                "notification_student",
+                [
+                    'student_id' => $student->id,
+                    'maker' => $user->full_name,
+                    'class_id' => $student->class_id
+                ]
+            );
+            $notifications->create(
+                "ویرایش اطلاعات اصلی دانش‌آموز ",
+                "اطلاعات دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} ویرایش شد",
+                "notification_student_" . $student->id,
+                [
+                    'student_id' => $student->id,
+                    'maker' => $user->full_name,
+                    'class_id' => $student->class_id
+                ]
+            );
+        } else {
+            $studentDetail = Info::create($validatedData);
+            $message = 'رکورد با موفقیت ایجاد شد';
+            $statusCode = 201;
+            $notifications->create(
+                "ثبت اطلاعات دانش‌آموز ",
+                "اطلاعات دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} ثبت شد",
+                "notification_student",
+                [
+                    'student_id' => $student->id,
+                    'maker' => $user->full_name,
+                    'class_id' => $student->class_id
+                ]
+            );
+            $notifications->create(
+                "ثبت اطلاعات اصلی دانش‌آموز ",
+                "اطلاعات دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} ثبت شد",
+                "notification_student_" . $student->id,
+                [
+                    'student_id' => $student->id,
+                    'maker' => $user->full_name,
+                    'class_id' => $student->class_id
+                ]
+            );
+        }
+
+        return response()->json([
+            'message' => $message,
+            'data' => $studentDetail
+        ], $statusCode);
+    }
+    public function saveMedicalInformation(MedicalStudentRequest $request, NotificationService $notifications)
+    {
+        $validatedData = $request->validated();
+        $studentId = $validatedData['student_id'];
+        $student = Student::firstOrFail($studentId);
+        $user = $request->user();
+
+        $studentDetail = MedicalInformation::where('student_id', $studentId)->first();
+
+        if ($studentDetail) {
+            $studentDetail->update($validatedData);
+            $message = 'رکورد با موفقیت بروزرسانی شد';
+            $statusCode = 200;
+            $notifications->create(
+                "ویرایش اطلاعات پزشکی دانش‌آموز ",
+                "اطلاعات پزشکی دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} ویرایش شد",
+                "notification_student",
+                [
+                    'student_id' => $student->id,
+                    'maker' => $user->full_name,
+                    'class_id' => $student->class_id
+                ]
+            );
+            $notifications->create(
+                "ویرایش اطلاعات اصلی دانش‌آموز ",
+                "اطلاعات دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} ویرایش شد",
+                "notification_student_" . $student->id,
+                [
+                    'student_id' => $student->id,
+                    'maker' => $user->full_name,
+                    'class_id' => $student->class_id
+                ]
+            );
+        } else {
+            $studentDetail = MedicalInformation::create($validatedData);
+            $message = 'رکورد با موفقیت ایجاد شد';
+            $statusCode = 201;
+            $notifications->create(
+                "ثبت اطلاعات  پزشکی دانش‌آموز ",
+                "اطلاعات پزشکی دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} ثبت شد",
+                "notification_student",
+                [
+                    'student_id' => $student->id,
+                    'maker' => $user->full_name,
+                    'class_id' => $student->class_id
+                ]
+            );
+            $notifications->create(
+                "ثبت اطلاعات پزشکی دانش‌آموز ",
+                "اطلاعات پزشکی دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} ثبت شد",
+                "notification_student_" . $student->id,
+                [
+                    'student_id' => $student->id,
+                    'maker' => $user->full_name,
+                    'class_id' => $student->class_id
+                ]
+            );
+        }
+
+        return response()->json([
+            'message' => $message,
+            'data' => $studentDetail
+        ], $statusCode);
+    }
+    public function storeDrug(DrugStudentRequest $request, NotificationService $notifications)
+    {
+        $validatedData = $request->validated();
+        $studentId = $validatedData['student_id'];
+        $student = Student::firstOrFail($studentId);
+        $user = $request->user();
+        $drug = Medication::create($validatedData);
+        $notifications->create(
+            "ثبت دارو   دانش‌آموز ",
+            "دارو  دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} ثبت شد",
+            "notification_student",
+            [
+                'student_id' => $student->id,
+                'maker' => $user->full_name,
+                'class_id' => $student->class_id
+            ]
+        );
+        $notifications->create(
+            "ثبت دارو  دانش‌آموز ",
+            "دارو  دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} ثبت شد",
+            "notification_student_" . $student->id,
+            [
+                'student_id' => $student->id,
+                'maker' => $user->full_name,
+                'class_id' => $student->class_id
+            ]
+        );
+        return response()->json([
+            'message' => 'دارو با موفقیت ثبت شد',
+            'data' => $drug
+        ], 201);
+    }
+
+    /**
+     * بروزرسانی داروی موجود
+     */
+    public function updateDrug(DrugStudentRequest $request, $id, NotificationService $notifications)
+    {
+        $validatedData = $request->validated();
+        $drug = Medication::findOrFail($id);
+        $drug->update($validatedData);
+        $studentId = $validatedData['student_id'];
+        $student = Student::firstOrFail($studentId);
+        $user = $request->user();
+
+        $notifications->create(
+            "ویرایش دارو   دانش‌آموز ",
+            "دارو  دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} ویرایش شد",
+            "notification_student",
+            [
+                'student_id' => $student->id,
+                'maker' => $user->full_name,
+                'class_id' => $student->class_id
+            ]
+        );
+        $notifications->create(
+            "ویرایش دارو  دانش‌آموز ",
+            "دارو  دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} ویرایش شد",
+            "notification_student_" . $student->id,
+            [
+                'student_id' => $student->id,
+                'maker' => $user->full_name,
+                'class_id' => $student->class_id
+            ]
+        );
+        return response()->json([
+            'message' => 'دارو با موفقیت بروزرسانی شد',
+            'data' => $drug
+        ], 200);
+    }
+
+    public function destroyDrug(Request $request, $id, NotificationService $notifications)
+    {
+        $drug = Medication::findOrFail($id);
+        $student = Student::firstOrFail($drug->student_id);
+        $drug->delete();
+        $user = $request->user();
+        $notifications->create(
+            "حذف دارو   دانش‌آموز ",
+            "دارو  دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} حذف شد",
+            "notification_student",
+            [
+                'student_id' => $student->id,
+                'maker' => $user->full_name,
+                'class_id' => $student->class_id
+            ]
+        );
+        $notifications->create(
+            "حذف دارو  دانش‌آموز ",
+            "دارو  دانش آموز {$student->first_name} {$student->last_name}  در سیستم توسط {$user->full_name} حذف شد",
+            "notification_student_" . $student->id,
+            [
+                'student_id' => $student->id,
+                'maker' => $user->full_name,
+                'class_id' => $student->class_id
+            ]
+        );
+        return response()->json([
+            'message' => 'دارو با موفقیت حذف شد'
+        ]);
+    }
     /**
      * نمایش یک دانش‌آموز خاص
      */
     public function show($id)
     {
-        $student = Student::with(['class.grade', 'parent'])->find($id);
-
+        $student = Student::with(['class.grade', 'parent', 'info', 'medicalInformation', 'medication', 'attributes', 'interests', 'concerns'])->find($id);
         if (!$student) {
             return response()->json([
                 'success' => false,
@@ -212,6 +548,16 @@ class StudentController extends Controller
                 'student_id' => $student->id,
                 'parent_id' => $student->parent_id,
                 'maker' => $maker->full_name,
+            ]
+        );
+        $notifications->create(
+            "بروزرسانی اطلاعات دانش‌آموز",
+            "اطلاعات دانش‌آموز {$student->first_name} {$student->last_name} و والد مربوطه بروزرسانی شد",
+            "notification_student_" . $student->id,
+            [
+                'student_id' => $student->id,
+                'maker' => $maker->full_name,
+                'class_id' => $student->class_id
             ]
         );
 

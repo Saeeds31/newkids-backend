@@ -43,5 +43,10 @@
     "Skills": true,
     "Task": true,
     "Message": true,
-    "Activity": true
+    "Activity": true,
+    "Interest": true,
+    "BehavioralInformation": true,
+    "Attirbute": true,
+    "Attribute": true,
+    "Concern": true
 }

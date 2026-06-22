@@ -1,0 +1,11 @@
+{
+    "name": "Interest",
+    "alias": "interest",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Interest\\Providers\\InterestServiceProvider"
+    ],
+    "files": []
+}

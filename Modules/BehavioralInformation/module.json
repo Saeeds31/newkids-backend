@@ -1,0 +1,11 @@
+{
+    "name": "BehavioralInformation",
+    "alias": "behavioralinformation",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\BehavioralInformation\\Providers\\BehavioralInformationServiceProvider"
+    ],
+    "files": []
+}

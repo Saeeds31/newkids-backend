@@ -37,8 +37,13 @@
             "Modules\\Subject\\": "Modules/Subject/app/",
             "Modules\\Student\\": "Modules/Student/app/",
             "Modules\\Traits\\": "Modules/Traits/app/",
+            "Modules\\Attribute\\": "Modules/Attribute/app/",
             "Modules\\Skills\\": "Modules/Skills/app/",
             "Modules\\Task\\": "Modules/Task/app/",
+            "Modules\\Interest\\": "Modules/Interest/app/",
+            "Modules\\Concern\\": "Modules/Concern/app/",
+            
+            "Modules\\BehavioralInformation\\": "Modules/BehavioralInformation/app/",
             "Modules\\Message\\": "Modules/Message/app/",
             "Modules\\Activity\\": "Modules/Activity/app/",
             "Modules\\Settings\\": "Modules/Settings/app/",

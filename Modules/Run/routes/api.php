@@ -10,7 +10,7 @@ Route::prefix('v1/admin')->group(function () {
 });
 Route::middleware(['auth:sanctum'])->prefix('v1/admin')->group(function () {
     // اختصاص پرمیژن ها از پنل ادمین
-    Route::get('run/permissions/manager', [RunController::class, 'setPermissions'])->name('setPermissions');
-    Route::get('run/permissions/teacher', [RunController::class, 'setPermissions'])->name('setPermissions');
-    Route::get('run/permissions/parent', [RunController::class, 'setPermissions'])->name('setPermissions');
+    Route::get('run/permissions/manager', [RunController::class, 'setManagerPermissions'])->name('setPermissions');
+    Route::get('run/permissions/teacher', [RunController::class, 'setTeacherPermissions'])->name('setPermissions');
+    Route::get('run/permissions/parent', [RunController::class, 'setParentPermissions'])->name('setPermissions');
 });

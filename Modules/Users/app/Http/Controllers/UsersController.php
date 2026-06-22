@@ -24,6 +24,52 @@ class UsersController extends Controller
             'permissions' => $permissions
         ]);
     }
+    public function registerParent(UserStoreRequest $request)
+    {
+        $data = $request->validated();
+        
+        // بررسی وجود والد با شماره موبایل
+        $existingParent = User::where('mobile', $data['mobile'])->first();
+        if ($existingParent) {
+            return response()->json([
+                'success' => false,
+                'message' => 'والدی با این شماره موبایل قبلاً در سیستم ثبت شده است',
+                'errors' => [
+                    'mobile' => ['شماره موبایل وارد شده تکراری است']
+                ]
+            ], 422);
+        }
+        
+        $data['is_active'] = false;
+        $parentRoleId = Role::where('slug', 'parent')->value('id');
+        if (!$parentRoleId) {
+            $newRole =  Role::create([
+                'name' => 'والدین',
+                'is_system' => true,
+                'slug' => "slug"
+            ]);
+            $parentRoleId = $newRole->id;
+        }
+        if ($request->hasFile('avatar')) {
+            $userAvatar = $request->file('avatar')->store('users/avatars', 'public');
+            $data['avatar'] = $userAvatar;
+        }
+    
+        $data['password'] = Hash::make($data['password']);
+        $user = User::create($data);
+        $customParentRole = Role::create([
+            'name' => 'والد ویژه - ' . $user->full_name,
+            'slug' => 'parent_' . $user->id,
+            'is_system' => true
+        ]);
+        $user->roles()->sync([$parentRoleId]);
+        $user->roles()->syncWithoutDetaching([$customParentRole->id]);
+        Wallet::create([
+            'user_id' => $user->id,
+            'balance' =>  0,
+        ]);
+        return response()->json($user->load(['roles', 'wallet']), 201);
+    }
     public function updateProfile(Request $request)
     {
         $user = $request->user();

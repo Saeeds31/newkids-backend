@@ -4,8 +4,11 @@ namespace Modules\Student\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Modules\Attribute\Models\Attribute;
 use Modules\Class\Models\Classes;
+use Modules\Concern\Models\Concern;
 use Modules\Grade\Models\Grade;
+use Modules\Interest\Models\Interest;
 use Modules\Message\Models\Message;
 use Modules\Skills\Models\Skills;
 use Modules\Task\Models\TaskResultEvaluation;
@@ -17,7 +20,7 @@ use Modules\Users\Models\User;
 
 class Student extends Model
 {
-   
+
     use HasFactory;
 
     protected $table = 'students';
@@ -41,6 +44,20 @@ class Student extends Model
 
     // ============ ارتباطات (Relationships) ============
 
+    public function info()
+    {
+        return $this->hasOne(Info::class);
+    }
+
+    public function medicalInformation()
+    {
+        return $this->hasOne(MedicalInformation::class);
+    }
+
+    public function medication()
+    {
+        return $this->hasMany(Medication::class);
+    }
     /**
      * ارتباط با کلاس
      * هر دانش‌آموز در یک کلاس تحصیل می‌کند
@@ -174,7 +191,7 @@ class Student extends Model
         if (!$this->birth_date) {
             return null;
         }
-        
+
         return $this->birth_date->age;
     }
 
@@ -188,14 +205,25 @@ class Student extends Model
             ->where('academic_year', $academicYear)
             ->first();
     }
-
+    public function attributes()
+    {
+        return $this->belongsToMany(Attribute::class, 'attribute_students');
+    }
+    public function concerns()
+    {
+        return $this->belongsToMany(Concern::class, 'concern_students');
+    }
+    public function interests()
+    {
+        return $this->belongsToMany(Interest::class, 'interest_students');
+    }
     /**
      * دریافت درصد نهایی دانش‌آموز در یک ترم
      */
     public function getOverallScore($term, $academicYear)
     {
         $status = $this->getOverallStatus($term, $academicYear);
-        
+
         return $status ? $status->total_score_percentage : 0;
     }
 
@@ -205,32 +233,32 @@ class Student extends Model
     public function getSkillScore($skillKey, $term = null, $academicYear = null)
     {
         $skill = Skills::where('key', $skillKey)->first();
-        
+
         if (!$skill) {
             return 0;
         }
-        
+
         $query = $this->taskResultEvaluations()
-            ->whereHas('evaluationCriterion', function($q) use ($skill) {
+            ->whereHas('evaluationCriterion', function ($q) use ($skill) {
                 $q->where('criterion_type', 'skill')
-                  ->where('criterion_id', $skill->id);
+                    ->where('criterion_id', $skill->id);
             });
-        
+
         if ($term && $academicYear) {
-            $query->whereHas('taskResult.taskOccurrence', function($q) use ($term, $academicYear) {
-                $q->whereHas('taskAssignment.task', function($task) use ($term, $academicYear) {
+            $query->whereHas('taskResult.taskOccurrence', function ($q) use ($term, $academicYear) {
+                $q->whereHas('taskAssignment.task', function ($task) use ($term, $academicYear) {
                     // اگر تسک‌ها فیلد term و academic_year دارند
                     // $task->where('term', $term)->where('academic_year', $academicYear);
                 });
             });
         }
-        
+
         $scores = $query->pluck('score')->toArray();
-        
+
         if (empty($scores)) {
             return 0;
         }
-        
+
         return round(array_sum($scores) / count($scores), 2);
     }
 
@@ -240,27 +268,27 @@ class Student extends Model
     public function getTraitScore($traitKey, $term = null, $academicYear = null)
     {
         $trait = Traits::where('key', $traitKey)->first();
-        
+
         if (!$trait) {
             return 0;
         }
-        
+
         $query = $this->taskResultEvaluations()
-            ->whereHas('evaluationCriterion', function($q) use ($trait) {
+            ->whereHas('evaluationCriterion', function ($q) use ($trait) {
                 $q->where('criterion_type', 'trait')
-                  ->where('criterion_id', $trait->id);
+                    ->where('criterion_id', $trait->id);
             });
-        
+
         if ($term && $academicYear) {
             // فیلتر بر اساس ترم و سال تحصیلی
         }
-        
+
         $scores = $query->pluck('score')->toArray();
-        
+
         if (empty($scores)) {
             return 0;
         }
-        
+
         return round(array_sum($scores) / count($scores), 2);
     }
 
@@ -271,7 +299,7 @@ class Student extends Model
     {
         $skills = Skills::all();
         $scores = [];
-        
+
         foreach ($skills as $skill) {
             $scores[$skill->key] = [
                 'name' => $skill->name,
@@ -279,7 +307,7 @@ class Student extends Model
                 'color' => $skill->color_code,
             ];
         }
-        
+
         return $scores;
     }
 
@@ -290,7 +318,7 @@ class Student extends Model
     {
         $traits = Traits::all();
         $scores = [];
-        
+
         foreach ($traits as $trait) {
             $scores[$trait->key] = [
                 'name' => $trait->name,
@@ -298,7 +326,7 @@ class Student extends Model
                 'color' => $trait->color_code,
             ];
         }
-        
+
         return $scores;
     }
 
@@ -308,7 +336,7 @@ class Student extends Model
     public function getTaskHistory($taskId)
     {
         return $this->taskResults()
-            ->whereHas('taskOccurrence.taskAssignment', function($q) use ($taskId) {
+            ->whereHas('taskOccurrence.taskAssignment', function ($q) use ($taskId) {
                 $q->where('task_id', $taskId);
             })
             ->with(['taskOccurrence', 'status', 'evaluations.evaluationCriterion'])
@@ -322,7 +350,7 @@ class Student extends Model
     public function getUnreadMessagesCountForParent($parentId)
     {
         return Message::where('to_user_id', $parentId)
-            ->whereHas('taskResult', function($q) {
+            ->whereHas('taskResult', function ($q) {
                 $q->where('student_id', $this->id);
             })
             ->where('is_read', false)
@@ -336,11 +364,11 @@ class Student extends Model
      */
     public function scopeSearch($query, $searchTerm)
     {
-        return $query->where(function($q) use ($searchTerm) {
+        return $query->where(function ($q) use ($searchTerm) {
             $q->where('first_name', 'like', "%{$searchTerm}%")
-              ->orWhere('last_name', 'like', "%{$searchTerm}%")
-              ->orWhere('national_code', 'like', "%{$searchTerm}%")
-              ->orWhere('student_code', 'like', "%{$searchTerm}%");
+                ->orWhere('last_name', 'like', "%{$searchTerm}%")
+                ->orWhere('national_code', 'like', "%{$searchTerm}%")
+                ->orWhere('student_code', 'like', "%{$searchTerm}%");
         });
     }
 
@@ -357,7 +385,7 @@ class Student extends Model
      */
     public function scopeInGrade($query, $gradeId)
     {
-        return $query->whereHas('class', function($q) use ($gradeId) {
+        return $query->whereHas('class', function ($q) use ($gradeId) {
             $q->where('grade_id', $gradeId);
         });
     }
@@ -376,7 +404,7 @@ class Student extends Model
     public function scopeOrderByName($query, $direction = 'asc')
     {
         return $query->orderBy('first_name', $direction)
-                     ->orderBy('last_name', $direction);
+            ->orderBy('last_name', $direction);
     }
 
     /**
@@ -394,7 +422,7 @@ class Student extends Model
     {
         $minDate = now()->subYears($maxAge)->startOfYear();
         $maxDate = now()->subYears($minAge)->endOfYear();
-        
+
         return $query->whereBetween('birth_date', [$minDate, $maxDate]);
     }
 }

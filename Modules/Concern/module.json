@@ -1,0 +1,11 @@
+{
+    "name": "Concern",
+    "alias": "concern",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Concern\\Providers\\ConcernServiceProvider"
+    ],
+    "files": []
+}
