@@ -6,10 +6,13 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Modules\Notifications\Services\NotificationService;
 use Modules\Users\Http\Requests\TeacherStoreRequest;
+use Modules\Users\Http\Requests\TeacherUpdateRequest;
 use Modules\Users\Models\Permission;
 use Modules\Users\Models\Role;
+use Modules\Users\Models\Teacher;
 use Modules\Users\Models\User;
 
 class TeacherController extends Controller
@@ -44,15 +47,15 @@ class TeacherController extends Controller
     /**
      * ثبت معلم جدید
      */
-    public function store(TeacherStoreRequest  $request, NotificationService $notifications)
+    public function store(TeacherStoreRequest $request, NotificationService $notifications)
     {
         $validated = $request->validated();
 
         DB::beginTransaction();
 
         try {
-            // ایجاد کاربر جدید
-            $teacherData = [
+            // ۱. ایجاد کاربر جدید
+            $userData = [
                 'first_name' => $validated['first_name'],
                 'last_name' => $validated['last_name'],
                 'mobile' => $validated['mobile'],
@@ -63,41 +66,61 @@ class TeacherController extends Controller
             // مدیریت آپلود آواتار
             if ($request->hasFile('avatar')) {
                 $avatarPath = $request->file('avatar')->store('teachers/avatars', 'public');
-                $teacherData['avatar'] = $avatarPath;
+                $userData['avatar'] = $avatarPath;
             }
 
-            $teacher = User::create($teacherData);
+            $user = User::create($userData);
 
+            // ۲. ایجاد رکورد teacher مرتبط با کاربر
+            $teacher = Teacher::create([
+                'user_id' => $user->id,
+                'national_code' => $validated['national_code'],
+                'education' => $validated['education'],
+                'education_field' => $validated['education_field'],
+                'job_history' => $validated['job_history'] ?? '',
+            ]);
+
+            // ۳. اتصال تخصص‌ها به معلم (اگر وجود داشته باشند)
+            if (!empty($validated['expertise_ids'])) {
+                $teacher->expertises()->attach($validated['expertise_ids']);
+            }
+
+            // ۴. ایجاد نقش‌ها و دسترسی‌ها
             $teacherRole = Role::where('slug', 'teacher')->first();
             $specialRole = Role::create([
-                'name' => "نقش ویژه معلم با آیدی " . $teacher->id,
+                'name' => "نقش ویژه معلم با آیدی " . $user->id,
                 'is_system' => true,
-                'slug' => "role_teacher_" . $teacher->id
+                'slug' => "role_teacher_" . $user->id
             ]);
+
             if ($teacherRole) {
-                $teacher->roles()->attach($teacherRole->id);
+                $user->roles()->attach($teacherRole->id);
             }
             if ($specialRole) {
-                $teacher->roles()->attach($specialRole->id);
+                $user->roles()->attach($specialRole->id);
             }
+
             $specialPer = Permission::create([
-                'name' =>  "notification_user_" . $teacher->id,
-                'label' => "ناتفیکیشن های مربی" . $teacher->full_name,
+                'name' => "notification_user_" . $user->id,
+                'label' => "ناتفیکیشن های مربی " . $user->full_name,
             ]);
             $specialRole->permissions()->attach($specialPer);
+
             DB::commit();
 
             // بارگذاری روابط
-            $teacher->load('roles');
+            $user->load('roles');
+            $teacher->load('expertises');
 
             // ثبت نوتیفیکیشن
             $maker = $request->user();
             $notifications->create(
                 "ثبت معلم جدید",
-                "معلم {$teacher->full_name} با موفقیت در سیستم ثبت شد",
+                "معلم {$user->full_name} با موفقیت در سیستم ثبت شد",
                 "notification_teacher",
                 [
                     'teacher_id' => $teacher->id,
+                    'user_id' => $user->id,
                     'maker' => $maker->full_name
                 ]
             );
@@ -105,7 +128,11 @@ class TeacherController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'معلم با موفقیت ایجاد شد',
-                'data' => $teacher
+                'data' => [
+                    'user' => $user,
+                    'teacher' => $teacher,
+                    'expertises' => $teacher->expertises
+                ]
             ], 201);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -149,72 +176,94 @@ class TeacherController extends Controller
     /**
      * بروزرسانی اطلاعات معلم
      */
-    public function update(Request $request, $id, NotificationService $notifications)
+    public function update(TeacherUpdateRequest $request, $id, NotificationService $notifications)
     {
-        $teacher = User::withRole('teacher')->find($id);
+        // پیدا کردن کاربر با نقش teacher
+        $user = User::withRole('teacher')->find($id);
 
-        if (!$teacher) {
+        if (!$user) {
             return response()->json([
                 'success' => false,
                 'message' => 'معلم مورد نظر یافت نشد'
             ], 404);
         }
 
-        $validated = $request->validate([
-            'first_name' => 'sometimes|required|string|max:50|min:2',
-            'last_name' => 'sometimes|required|string|max:50|min:2',
-            'mobile' => [
-                'sometimes',
-                'required',
-                'string',
-                'size:11',
-                'regex:/^09[0-9]{9}$/',
-                Rule::unique('users', 'mobile')->ignore($teacher->id)
-            ],
-            'password' => 'nullable|string|min:6|confirmed',
-            'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-            'is_active' => 'boolean',
-        ]);
+        $validated = $request->validated();
 
         DB::beginTransaction();
 
         try {
-            // آماده‌سازی داده‌ها برای بروزرسانی
-            $updateData = [];
+            // ۱. بروزرسانی اطلاعات کاربر
+            $userUpdateData = [];
 
-            if (isset($validated['first_name'])) $updateData['first_name'] = $validated['first_name'];
-            if (isset($validated['last_name'])) $updateData['last_name'] = $validated['last_name'];
-            if (isset($validated['mobile'])) $updateData['mobile'] = $validated['mobile'];
-            if (isset($validated['is_active'])) $updateData['is_active'] = $validated['is_active'];
+            if (isset($validated['first_name'])) $userUpdateData['first_name'] = $validated['first_name'];
+            if (isset($validated['last_name'])) $userUpdateData['last_name'] = $validated['last_name'];
+            if (isset($validated['mobile'])) $userUpdateData['mobile'] = $validated['mobile'];
+            if (isset($validated['is_active'])) $userUpdateData['is_active'] = $validated['is_active'];
 
             if (isset($validated['password']) && !empty($validated['password'])) {
-                $updateData['password'] = Hash::make($validated['password']);
+                $userUpdateData['password'] = Hash::make($validated['password']);
             }
 
             // مدیریت آپلود آواتار جدید
             if ($request->hasFile('avatar')) {
                 // حذف آواتار قبلی
-                if ($teacher->avatar && Storage::disk('public')->exists($teacher->avatar)) {
-                    Storage::disk('public')->delete($teacher->avatar);
+                if ($user->avatar && Storage::disk('public')->exists($user->avatar)) {
+                    Storage::disk('public')->delete($user->avatar);
                 }
-                $updateData['avatar'] = $request->file('avatar')->store('teachers/avatars', 'public');
+                $userUpdateData['avatar'] = $request->file('avatar')->store('teachers/avatars', 'public');
             }
 
-            // بروزرسانی معلم
-            $teacher->update($updateData);
+            // بروزرسانی کاربر
+            $user->update($userUpdateData);
+
+            // ۲. بروزرسانی اطلاعات مدل Teacher
+            $teacher = $user->teacher;
+
+            if (!$teacher) {
+                // اگر معلم وجود نداشت، ایجاد کن (حالت خاص)
+                $teacher = Teacher::create([
+                    'user_id' => $user->id,
+                    'national_code' => $validated['national_code'] ?? '',
+                    'education' => $validated['education'] ?? '',
+                    'education_field' => $validated['education_field'] ?? '',
+                    'job_history' => $validated['job_history'] ?? '',
+                ]);
+            } else {
+                // بروزرسانی اطلاعات معلم
+                $teacherUpdateData = [];
+
+                if (isset($validated['national_code'])) $teacherUpdateData['national_code'] = $validated['national_code'];
+                if (isset($validated['education'])) $teacherUpdateData['education'] = $validated['education'];
+                if (isset($validated['education_field'])) $teacherUpdateData['education_field'] = $validated['education_field'];
+                if (isset($validated['job_history'])) $teacherUpdateData['job_history'] = $validated['job_history'];
+
+                if (!empty($teacherUpdateData)) {
+                    $teacher->update($teacherUpdateData);
+                }
+            }
+
+            // ۳. بروزرسانی تخصص‌ها (اگر وجود داشته باشند)
+            if (isset($validated['expertise_ids'])) {
+                // sync جایگزین تخصص‌های قبلی با تخصص‌های جدید می‌شود
+                $teacher->expertises()->sync($validated['expertise_ids']);
+            }
 
             DB::commit();
 
-            $teacher->load('roles');
+            // بارگذاری روابط
+            $user->load('roles');
+            $teacher->load('expertises');
 
             // ثبت نوتیفیکیشن
             $maker = $request->user();
             $notifications->create(
                 "بروزرسانی اطلاعات معلم",
-                "اطلاعات معلم {$teacher->full_name} بروزرسانی شد",
+                "اطلاعات معلم {$user->full_name} بروزرسانی شد",
                 "notification_teacher",
                 [
                     'teacher_id' => $teacher->id,
+                    'user_id' => $user->id,
                     'maker' => $maker->full_name
                 ]
             );
@@ -222,7 +271,11 @@ class TeacherController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'اطلاعات معلم با موفقیت بروزرسانی شد',
-                'data' => $teacher
+                'data' => [
+                    'user' => $user,
+                    'teacher' => $teacher,
+                    'expertises' => $teacher->expertises
+                ]
             ], 200);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -238,9 +291,10 @@ class TeacherController extends Controller
      */
     public function destroy($id, Request $request, NotificationService $notifications)
     {
-        $teacher = User::withRole('teacher')->find($id);
+        // پیدا کردن کاربر با نقش teacher
+        $user = User::withRole('teacher')->find($id);
 
-        if (!$teacher) {
+        if (!$user) {
             return response()->json([
                 'success' => false,
                 'message' => 'معلم مورد نظر یافت نشد'
@@ -248,29 +302,72 @@ class TeacherController extends Controller
         }
 
         $permanent = $request->get('permanent', false);
-        $teacherName = $teacher->full_name;
+        $teacherName = $user->full_name;
+        $teacher = $user->teacher; // دریافت رکورد معلم
 
         DB::beginTransaction();
 
         try {
             if ($permanent) {
-                // حذف کامل
-                if ($teacher->avatar && Storage::disk('public')->exists($teacher->avatar)) {
-                    Storage::disk('public')->delete($teacher->avatar);
+                // ============ حذف کامل (Permanent Delete) ============
+
+                // ۱. حذف آواتار کاربر
+                if ($user->avatar && Storage::disk('public')->exists($user->avatar)) {
+                    Storage::disk('public')->delete($user->avatar);
                 }
-                $teacher->forceDelete();
-                $message = 'معلم برای همیشه حذف شد';
+
+                // ۲. حذف تخصص‌های معلم (جدول واسط)
+                if ($teacher) {
+                    $teacher->expertises()->detach(); // حذف روابط در جدول expertise_teacher
+                }
+
+                // ۳. حذف رکورد teacher
+                if ($teacher) {
+                    $teacher->forceDelete();
+                }
+
+                // ۴. حذف نقش‌های اختصاصی معلم 
+                $specialRole = Role::where('slug', 'role_teacher_' . $user->id)->first();
+                if ($specialRole) {
+                    // حذف دسترسی‌های مربوط به نقش
+                    $specialRole->permissions()->detach();
+                    $specialRole->delete();
+                }
+
+                // ۵. حذف دسترسی‌های اختصاصی 
+                $specialPermission = Permission::where('name', 'notification_user_' . $user->id)->first();
+                if ($specialPermission) {
+                    $specialPermission->delete();
+                }
+
+                // ۶. حذف کاربر
+                $user->forceDelete();
+
+                $message = 'معلم و تمام اطلاعات مرتبط برای همیشه حذف شد';
             } else {
-                // فقط غیرفعال کردن
-                $teacher->update(['is_active' => false]);
+                // ============ غیرفعال کردن (Soft Delete) ============
+
+                // ۱. غیرفعال کردن کاربر
+                $user->update(['is_active' => false]);
+
+                // ۲. اگر از SoftDeletes در مدل Teacher استفاده می‌کنید
+                if ($teacher && method_exists($teacher, 'delete')) {
+                    $teacher->delete(); // soft delete
+                }
+
+
+
                 $message = 'معلم با موفقیت غیرفعال شد';
             }
 
             DB::commit();
 
+            // ثبت نوتیفیکیشن
             $notifications->create(
-                "حذف معلم",
-                "معلم {$teacherName} از سیستم حذف شد",
+                $permanent ? "حذف دائمی معلم" : "غیرفعال سازی معلم",
+                $permanent
+                    ? "معلم {$teacherName} و تمام اطلاعات مرتبط برای همیشه از سیستم حذف شد"
+                    : "معلم {$teacherName} با موفقیت غیرفعال شد",
                 "notification_teacher",
                 [
                     'teacher_id' => $id,
@@ -281,7 +378,13 @@ class TeacherController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => $message
+                'message' => $message,
+                'data' => [
+                    'user_id' => $id,
+                    'teacher_name' => $teacherName,
+                    'permanent' => $permanent,
+                    'deleted_at' => $permanent ? now() : null
+                ]
             ], 200);
         } catch (\Exception $e) {
             DB::rollBack();

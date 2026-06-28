@@ -42,7 +42,7 @@
             "Modules\\Task\\": "Modules/Task/app/",
             "Modules\\Interest\\": "Modules/Interest/app/",
             "Modules\\Concern\\": "Modules/Concern/app/",
-            
+            "Modules\\Expertise\\": "Modules/Expertise/app/",
             "Modules\\BehavioralInformation\\": "Modules/BehavioralInformation/app/",
             "Modules\\Message\\": "Modules/Message/app/",
             "Modules\\Activity\\": "Modules/Activity/app/",

@@ -1,0 +1,11 @@
+{
+    "name": "Expertise",
+    "alias": "expertise",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\Expertise\\Providers\\ExpertiseServiceProvider"
+    ],
+    "files": []
+}

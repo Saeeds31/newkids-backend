@@ -55,9 +55,13 @@ class User extends Authenticatable
             ->values()
             ->toArray();
     }
-    public function wallet(){
+    public function teacher()
+    {
+        return $this->hasOne(Teacher::class);
+    }
+    public function wallet()
+    {
         return $this->hasOne(Wallet::class);
-
     }
     public function hasPermission($permission)
     {
@@ -93,7 +97,7 @@ class User extends Authenticatable
         return $this->hasMany(TaskAssignment::class, 'teacher_id');
     }
 
-   
+
     public function classSubjectTimes()
     {
         return $this->hasMany(ClassSubjectTime::class, 'teacher_id');

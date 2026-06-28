@@ -48,5 +48,6 @@
     "BehavioralInformation": true,
     "Attirbute": true,
     "Attribute": true,
-    "Concern": true
+    "Concern": true,
+    "Expertise": true
 }

@@ -18,9 +18,14 @@ class TeacherStoreRequest extends FormRequest
             'password' => 'required|string|min:6|confirmed',
             'avatar' => 'nullable|file|mimes:jpeg,png,jpg,gif|max:2048',
             'is_active' => 'boolean',
+            'national_code' => 'required|string|size:10|regex:/^[0-9]{10}$/|unique:teachers,national_code',
+            'education' => 'required|string|max:255',
+            'education_field' => 'required|string|max:255',
+            'job_history' => 'nullable|string|max:1000',
+            'expertise_ids' => 'nullable|array',
+            'expertise_ids.*' => 'exists:expertises,id',
         ];
     }
-
     /**
      * Determine if the user is authorized to make this request.
      */
