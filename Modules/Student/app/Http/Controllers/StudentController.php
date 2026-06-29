@@ -41,7 +41,7 @@ class StudentController extends Controller
     /**
      * ذخیره دانش‌آموز جدید
      */
-    public function store(StudentStoreRequest $request, NotificationService $notifications)
+    public function store(Request $request, NotificationService $notifications)
     {
         $validated = $request->validate([
             'first_name' => 'required|string|max:50|min:2',
