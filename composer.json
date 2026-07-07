@@ -41,6 +41,7 @@
             "Modules\\Skills\\": "Modules/Skills/app/",
             "Modules\\Task\\": "Modules/Task/app/",
             "Modules\\Interest\\": "Modules/Interest/app/",
+            "Modules\\Consulting\\": "Modules/Consulting/app/",
             "Modules\\Concern\\": "Modules/Concern/app/",
             "Modules\\Expertise\\": "Modules/Expertise/app/",
             "Modules\\BehavioralInformation\\": "Modules/BehavioralInformation/app/",
