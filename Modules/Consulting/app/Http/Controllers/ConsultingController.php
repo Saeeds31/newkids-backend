@@ -17,14 +17,28 @@ class ConsultingController extends Controller
             'subject'   => 'nullable|string|max:255',
             'body'      => 'nullable|string',
         ]);
-
+    
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'errors'  => $validator->errors(),
             ], 422);
         }
-
+    
+        // چک کردن تکراری بودن شماره موبایل
+        $existingConsulting = Consulting::where('mobile', $request->mobile)->first();
+    
+        if ($existingConsulting) {
+            return response()->json([
+                'success' => false,
+                'message' => 'شماره شما از قبل ثبت شده است',
+                'data'    => [
+                    'existing_record' => $existingConsulting,
+                    'registered_at'   => $existingConsulting->created_at->format('Y-m-d H:i:s'),
+                ],
+            ], 409); // 409 Conflict
+        }
+    
         $consulting = Consulting::create([
             'full_name' => $request->full_name,
             'mobile'    => $request->mobile,
@@ -32,7 +46,7 @@ class ConsultingController extends Controller
             'body'      => $request->body,
             'status'    => 'pending',
         ]);
-
+    
         return response()->json([
             'success' => true,
             'message' => 'درخواست شما با موفقیت ثبت شد',
