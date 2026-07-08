@@ -84,22 +84,6 @@ class ConsultingController extends Controller
         ]);
     }
 
-    /**
-     * مشاهده جزئیات یک درخواست (برای ادمین)
-     */
-    public function adminShow($id)
-    {
-        $consulting = Consulting::findOrFail($id);
-
-        return response()->json([
-            'success' => true,
-            'data'    => $consulting,
-        ]);
-    }
-
-    /**
-     * تغییر وضعیت درخواست (برای ادمین)
-     */
     public function adminUpdateStatus(Request $request, $id)
     {
         $validator = Validator::make($request->all(), [
@@ -122,4 +106,20 @@ class ConsultingController extends Controller
             'data'    => $consulting,
         ]);
     }
+    /**
+     * مشاهده جزئیات یک درخواست (برای ادمین)
+     */
+    public function adminShow($id)
+    {
+        $consulting = Consulting::findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $consulting,
+        ]);
+    }
+
+    /**
+     * تغییر وضعیت درخواست (برای ادمین)
+     */
 }
