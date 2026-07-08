@@ -3,6 +3,7 @@
 namespace Modules\Consulting\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Services\SmsService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Modules\Consulting\Models\Consulting;
@@ -48,7 +49,9 @@ class ConsultingController extends Controller
             'answer'      => $request->answer,
             'status'    => 'pending',
         ]);
-
+        $smsService = new SmsService();
+        $smsService->sendText($request->mobile,'درخواست مشاوره شما با موفقیت ثبت شد\n به زودی کارشناسان ما با شما تماس خواهند گرفت\nنیوکیدز - کودک آگاه');
+        $smsService->sendToKavenegar('consultingAdmin', "09113894304", $consulting->id);
         return response()->json([
             'success' => true,
             'message' => 'درخواست شما با موفقیت ثبت شد',
@@ -86,7 +89,7 @@ class ConsultingController extends Controller
         ]);
     }
 
- 
+
 
     public function adminShow($id)
     {
