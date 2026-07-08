@@ -16,18 +16,19 @@ class ConsultingController extends Controller
             'mobile'    => 'required|string|max:11|min:10',
             'subject'   => 'nullable|string|max:255',
             'body'      => 'nullable|string',
+            'answer'      => 'nullable|string',
         ]);
-    
+
         if ($validator->fails()) {
             return response()->json([
                 'success' => false,
                 'errors'  => $validator->errors(),
             ], 422);
         }
-    
+
         // چک کردن تکراری بودن شماره موبایل
         $existingConsulting = Consulting::where('mobile', $request->mobile)->first();
-    
+
         if ($existingConsulting) {
             return response()->json([
                 'success' => false,
@@ -38,15 +39,16 @@ class ConsultingController extends Controller
                 ],
             ], 409); // 409 Conflict
         }
-    
+
         $consulting = Consulting::create([
             'full_name' => $request->full_name,
             'mobile'    => $request->mobile,
             'subject'   => $request->subject,
             'body'      => $request->body,
+            'answer'      => $request->answer,
             'status'    => 'pending',
         ]);
-    
+
         return response()->json([
             'success' => true,
             'message' => 'درخواست شما با موفقیت ثبت شد',
@@ -76,7 +78,7 @@ class ConsultingController extends Controller
         }
 
         // مرتب‌سازی (جدیدترین اول)
-        $consultings = $query->orderBy('created_at', 'desc')->paginate(15);
+        $consultings = $query->orderBy('created_at', 'desc')->latest()->paginate(15);
 
         return response()->json([
             'success' => true,
@@ -84,10 +86,22 @@ class ConsultingController extends Controller
         ]);
     }
 
+ 
+
+    public function adminShow($id)
+    {
+        $consulting = Consulting::findOrFail($id);
+
+        return response()->json([
+            'success' => true,
+            'data'    => $consulting,
+        ]);
+    }
     public function adminUpdateStatus(Request $request, $id)
     {
         $validator = Validator::make($request->all(), [
             'status' => 'required|in:pending,seen,answered',
+            'answer' => 'nullable|string|max:1000', // اضافه کردن فیلد پاسخ
         ]);
 
         if ($validator->fails()) {
@@ -98,7 +112,15 @@ class ConsultingController extends Controller
         }
 
         $consulting = Consulting::findOrFail($id);
-        $consulting->update(['status' => $request->status]);
+
+        $updateData = ['status' => $request->status];
+
+        // اگر پاسخ ارسال شده، آن را هم ذخیره کن
+        if ($request->has('answer')) {
+            $updateData['answer'] = $request->answer;
+        }
+
+        $consulting->update($updateData);
 
         return response()->json([
             'success' => true,
@@ -106,20 +128,4 @@ class ConsultingController extends Controller
             'data'    => $consulting,
         ]);
     }
-    /**
-     * مشاهده جزئیات یک درخواست (برای ادمین)
-     */
-    public function adminShow($id)
-    {
-        $consulting = Consulting::findOrFail($id);
-
-        return response()->json([
-            'success' => true,
-            'data'    => $consulting,
-        ]);
-    }
-
-    /**
-     * تغییر وضعیت درخواست (برای ادمین)
-     */
 }

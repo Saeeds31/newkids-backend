@@ -208,6 +208,7 @@ class RunController extends Controller
             'skills'   => 'مهارت',
             'student'   => 'دانش آموز',
             'subject'   => 'موضوع',
+            'consulting'   => 'مشاوره',
             'task'   => 'وظیفه',
             'traits'   => 'ویژگی',
             'wallet'   => 'کیف پول',

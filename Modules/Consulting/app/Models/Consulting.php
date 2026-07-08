@@ -15,6 +15,7 @@ class Consulting extends Model
         'subject',
         'body',
         'status',
+        'answer'
     ];
 
     protected $casts = [
