@@ -50,7 +50,7 @@ class ConsultingController extends Controller
             'status'    => 'pending',
         ]);
         $smsService = new SmsService();
-        $smsService->sendText($request->mobile,'درخواست مشاوره شما با موفقیت ثبت شد\n به زودی کارشناسان ما با شما تماس خواهند گرفت\nنیوکیدز - کودک آگاه');
+        $smsService->sendText($request->mobile,'درخواست مشاوره شما با موفقیت ثبت شد  به زودی کارشناسان ما با شما تماس خواهند گرفت نیوکیدز - کودک آگاه');
         $smsService->sendToKavenegar('consultingAdmin', "09900300013", $consulting->id);
         return response()->json([
             'success' => true,
