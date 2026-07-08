@@ -14,6 +14,18 @@ use Modules\Wallet\Models\Wallet;
 
 class UsersController extends Controller
 {
+    public function changeIsActicveFromAdmin(Request $request)
+    {
+        $data=$request->validate([
+            'user_id'=>'required|exists:users,id'
+        ]);
+        $user=User::findOrFail($data['user_id']);
+        $user->toggleActive();
+        return response()->json([
+            'succcess' => true,
+            'message' => "تغییر وضعیت با موفقیت انحام شد"
+        ]);
+    }
     public function adminInfo(Request $request)
     {
         $user = $request->user();
@@ -27,7 +39,7 @@ class UsersController extends Controller
     public function registerParent(UserStoreRequest $request)
     {
         $data = $request->validated();
-        
+
         // بررسی وجود والد با شماره موبایل
         $existingParent = User::where('mobile', $data['mobile'])->first();
         if ($existingParent) {
@@ -39,7 +51,7 @@ class UsersController extends Controller
                 ]
             ], 422);
         }
-        
+
         $data['is_active'] = false;
         $parentRoleId = Role::where('slug', 'parent')->value('id');
         if (!$parentRoleId) {
@@ -54,7 +66,7 @@ class UsersController extends Controller
             $userAvatar = $request->file('avatar')->store('users/avatars', 'public');
             $data['avatar'] = $userAvatar;
         }
-    
+
         $data['password'] = Hash::make($data['password']);
         $user = User::create($data);
         $customParentRole = Role::create([

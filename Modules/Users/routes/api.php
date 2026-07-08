@@ -23,6 +23,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1/admin')->group(function () {
     Route::post('/user-managers/assign-roles', [RolesController::class, 'assignRoles'])->name("assignRoles");
     Route::get('/all-permissions', [RolesController::class, 'allPermissions'])->name("allPermissions");
     Route::post('/save-permissions', [RolesController::class, 'savePermissions'])->name("savePermissions");
+    Route::post('/change-activity', [UsersController::class, 'changeIsActicveFromAdmin'])->name("changeIsActicveFromAdmin");
+    
 });
 Route::post('v1/admin/login-verify', [AuthController::class, 'adminLogin'])->name("adminLogin");
 Route::post('v1/admin/send-token', [AuthController::class, 'adminSendToken'])->name("adminSendToken");

@@ -55,6 +55,11 @@ class User extends Authenticatable
             ->values()
             ->toArray();
     }
+    public function toggleActive()
+    {
+        $this->is_active = !$this->is_active;
+        return $this->save();
+    }
     public function teacher()
     {
         return $this->hasOne(Teacher::class);
