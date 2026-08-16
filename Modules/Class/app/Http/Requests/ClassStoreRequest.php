@@ -21,7 +21,7 @@ class ClassStoreRequest extends FormRequest
             ],
             'grade_id' => 'required|exists:grades,id',
             'academic_year' => 'required|integer', // 1403-1404
-            'image' => 'nullable|file|mimes:jpeg,png,jpg,gif|max:2048'
+            'image' => 'nullable|file|mimes:webp,jpeg,png,jpg,gif|max:2048'
         ];
     }
 
