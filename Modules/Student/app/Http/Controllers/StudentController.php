@@ -49,7 +49,7 @@ class StudentController extends Controller
             'last_name' => 'required|string|max:50|min:2',
             'parent_last_name' => 'required|string|max:50|min:2',
             'parent_password' => 'required|string|max:50|min:2',
-            
+
             'national_code' => 'required|string|size:10|regex:/^\d{10}$/|unique:students,national_code',
             'class_id' => 'required|exists:classes,id',
             'parent_mobile' => 'required|string|size:11',
@@ -245,8 +245,13 @@ class StudentController extends Controller
     {
         $user = $request->user();
         $validatedData = $request->validated();
-        $studentId = $validatedData['student_id'];
-        $student = Student::firstOrFail($studentId);
+        $studentId = $request->student_id;
+        if ($studentId) {
+            $student = Student::findOrFail($studentId);
+        } else {
+            $student = Student::create($validatedData);
+            $studentId = $student->id;
+        }
         $studentDetail = Info::where('student_id', $studentId)->first();
 
         if ($studentDetail) {
@@ -401,6 +406,15 @@ class StudentController extends Controller
         ], 201);
     }
 
+    public function getStudentDrug($id)
+    {
+        $student = Student::findOrFail($id);
+        $drugs = Medication::where('student_id', $student->id)->get();
+        return response()->json([
+            'data' => $drugs,
+            'message' => 'دارو های دانش آموز'
+        ]);
+    }
     /**
      * بروزرسانی داروی موجود
      */

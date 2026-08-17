@@ -11,11 +11,11 @@ Route::middleware(['auth:sanctum'])->prefix('v1/manager')->group(function () {
     Route::post('student/medical-information', [StudentController::class, 'saveMedicalInformation'])->name('saveMedicalInformation');
     Route::post('student/drug', [StudentController::class, 'storeDrug'])->name('storeDrug');
     Route::put('student/drug/{id}', [StudentController::class, 'updateDrug'])->name('updateDrug');
+    Route::get('student/drug/{id}', [StudentController::class, 'getStudentDrug'])->name('getStudentDrug');
     Route::delete('student/drug/{id}', [StudentController::class, 'destroyDrug'])->name('destroyDrug');
-    
+
     Route::prefix('students')->group(function () {
         Route::get('/by-class/{classId}', [StudentController::class, 'getStudentsByClass'])->name('students.by-class');
         Route::get('/search', [StudentController::class, 'search'])->name('students.search');
     });
 });
-
