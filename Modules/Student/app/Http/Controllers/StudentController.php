@@ -480,6 +480,9 @@ class StudentController extends Controller
             ]
         );
         return response()->json([
+            'data' => [
+                'student' => $student
+            ],
             'message' => 'دارو با موفقیت حذف شد'
         ]);
     }

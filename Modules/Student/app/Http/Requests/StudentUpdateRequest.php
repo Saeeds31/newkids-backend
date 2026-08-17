@@ -51,7 +51,7 @@ class StudentUpdateRequest extends FormRequest
                 'regex:/^09[0-9]{9}$/',
                 Rule::unique('users', 'mobile')->ignore($parentId)
             ],
-            'parent_password' => 'nullable|string|min:6|confirmed',
+            'parent_password' => 'nullable|string|min:6',
             'parent_avatar' => 'nullable|file|mimes:jpeg,png,jpg,gif|max:2048',
         ];
     }
