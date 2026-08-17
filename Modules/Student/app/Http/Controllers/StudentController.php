@@ -614,6 +614,10 @@ class StudentController extends Controller
         if ($student->avatar && Storage::disk('public')->exists($student->avatar)) {
             Storage::disk('public')->delete($student->avatar);
         }
+        Info::where('student_id', $student->id)->delete();
+        Medication::where('student_id', $student->id)->delete();
+        MedicalInformation::where('student_id', $student->id)->delete();
+
         $student->delete();
         // ثبت نوتیفیکیشن برای حذف
         $maker = $request->user();
