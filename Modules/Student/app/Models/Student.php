@@ -29,6 +29,7 @@ class Student extends Model
         'first_name',
         'last_name',
         'avatar',
+        'parent_avatar',
         'national_code',
         'student_code',
         'class_id',

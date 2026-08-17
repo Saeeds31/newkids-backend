@@ -7,6 +7,7 @@ use Modules\Users\Http\Controllers\TeacherController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1/manager')->group(function () {
     Route::apiResource('teachers', TeacherController::class)->names('users');
+    Route::post('teachers/{id}/toggle-active', [TeacherController::class,'toggleActive'])->name('toggleActive');
 });
 Route::middleware(['auth:sanctum'])->prefix('v1/teacher')->group(function () {
     Route::get('/students', [TeacherController::class, 'getStudents'])->name('teachers-getStudents');

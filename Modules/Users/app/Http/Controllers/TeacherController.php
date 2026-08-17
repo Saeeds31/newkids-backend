@@ -18,13 +18,54 @@ use Modules\Users\Models\User;
 class TeacherController extends Controller
 {
 
+    public function toggleActive(Request $request, $id)
+    {
+        try {
+            // پیدا کردن کاربر با نقش معلم
+            $teacher = User::whereHas('roles', function ($q) {
+                $q->where('slug', 'teacher');
+            })
+                ->with('teacher')
+                ->find($id);
+
+            // اگر کاربر وجود نداشت یا معلم نبود
+            if (!$teacher) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'مربی مورد نظر یافت نشد'
+                ], 404);
+            }
+
+            // تغییر وضعیت فعال
+            $teacher->is_active = !$teacher->is_active;
+            $teacher->save();
+
+
+            return response()->json([
+                'success' => true,
+                'message' => $teacher->is_active ? 'مربی فعال شد' : 'مربی غیرفعال شد',
+                'data' => [
+                    'id' => $teacher->id,
+                    'full_name' => $teacher->full_name,
+                    'is_active' => $teacher->is_active,
+                ]
+            ], 200);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در تغییر وضعیت مربی: ' . $e->getMessage()
+            ], 500);
+        }
+    }
     /**
      * نمایش لیست تمام معلمان
      */
     public function index(Request $request)
     {
-        $teachers = User::withRole('teacher')
-            ->with('roles')
+        $teachers = User::whereHas('roles', function ($q) {
+            $q->where('slug', 'teacher'); // یا name = 'teacher'
+        })
+            ->with('roles', 'teacher')
             ->when($request->get('search'), function ($query, $search) {
                 return $query->where(function ($q) use ($search) {
                     $q->where('first_name', 'like', "%{$search}%")
@@ -179,8 +220,9 @@ class TeacherController extends Controller
     public function update(TeacherUpdateRequest $request, $id, NotificationService $notifications)
     {
         // پیدا کردن کاربر با نقش teacher
-        $user = User::withRole('teacher')->find($id);
-
+        $user = User::whereHas('roles', function ($q) {
+            $q->where('slug', 'teacher'); // یا where('name', 'teacher')
+        })->find($id);
         if (!$user) {
             return response()->json([
                 'success' => false,

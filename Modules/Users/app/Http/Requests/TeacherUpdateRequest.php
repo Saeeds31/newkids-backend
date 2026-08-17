@@ -6,43 +6,66 @@ namespace Modules\Users\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 
 use Illuminate\Validation\Rule;
+use Modules\Users\Models\Teacher;
+use Modules\Users\Models\User;
 
 class TeacherUpdateRequest extends FormRequest
 {
     public function rules(): array
     {
-        $userId = $this->route('id');
 
+        $userId = $this->route('teacher'); // یا $this->route('teacher')
         return [
-            // اطلاعات کاربری
+            // ============ اطلاعات کاربری ============
             'first_name' => 'sometimes|required|string|max:50|min:2',
             'last_name' => 'sometimes|required|string|max:50|min:2',
+
             'mobile' => [
                 'sometimes',
                 'required',
                 'string',
                 'size:11',
                 'regex:/^09[0-9]{9}$/',
-                Rule::unique('users', 'mobile')->ignore($userId)
+                // اصلاح: استفاده از Closure برای بررسی دقیق‌تر
+                function ($attribute, $value, $fail) use ($userId) {
+                    $exists = User::where('mobile', $value)
+                        ->where('id', '!=', $userId)
+                        ->exists();
+
+                    if ($exists) {
+                        $fail('شماره موبایل قبلاً توسط کاربر دیگری ثبت شده است.');
+                    }
+                },
             ],
+
             'password' => 'nullable|string|min:6|confirmed',
             'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             'is_active' => 'boolean',
 
-            // اطلاعات تخصصی معلم
+            // ============ اطلاعات تخصصی معلم ============
             'national_code' => [
                 'sometimes',
                 'required',
                 'string',
                 'size:10',
                 'regex:/^[0-9]{10}$/',
-                Rule::unique('teachers', 'national_code')->ignore($userId, 'user_id')
+                // اصلاح: استفاده از Closure برای بررسی دقیق‌تر
+                function ($attribute, $value, $fail) use ($userId) {
+                    $exists = Teacher::where('national_code', $value)
+                        ->where('user_id', '!=', $userId)
+                        ->exists();
+
+                    if ($exists) {
+                        $fail('کد ملی قبلاً توسط مربی دیگری ثبت شده است.');
+                    }
+                },
             ],
+
             'education' => 'sometimes|required|string|max:255',
             'education_field' => 'sometimes|required|string|max:255',
             'job_history' => 'nullable|string|max:1000',
 
-            // تخصص‌ها (آرایه‌ای از IDها)
+            // ============ تخصص‌ها ============
             'expertise_ids' => 'nullable|array',
             'expertise_ids.*' => 'exists:expertises,id',
         ];

@@ -17,7 +17,8 @@ class StudentStoreRequest extends FormRequest
             'national_code' => 'required|string|size:10|regex:/^\d{10}$/|unique:students,national_code',
             'class_id' => 'required|exists:classes,id',
             'birth_date' => 'required|date|before:today',
-            'student_avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'parent_avatar' => 'nullable|file|mimes:jpeg,png,jpg,gif|max:2048',
+            'avatar' => 'nullable|file|mimes:jpeg,png,jpg,gif|max:2048',
         ];
     }
 
