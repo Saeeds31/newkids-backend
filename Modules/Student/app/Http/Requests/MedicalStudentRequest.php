@@ -14,7 +14,7 @@ class MedicalStudentRequest extends FormRequest
         return [
             'height' => ['required', 'integer', 'min:30', 'max:250'], // سانتی‌متر
             'weight' => ['required', 'integer', 'min:5', 'max:200'], // کیلوگرم
-            'blood_type' => ['required', 'integer', 'in:A+,A-,B+,B-,AB+,AB-,O+,O-'], 
+            'blood_type' => ['required', 'string', 'in:A+,A-,B+,B-,AB+,AB-,O+,O-'], 
             'special_disease' => ['nullable', 'string', 'max:500'],
             'food_allergy' => ['nullable', 'string', 'max:500'],
             'drug_allergy' => ['nullable', 'string', 'max:500'],
