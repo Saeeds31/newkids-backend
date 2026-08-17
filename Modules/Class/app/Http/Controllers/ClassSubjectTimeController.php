@@ -19,124 +19,81 @@ class ClassSubjectTimeController extends Controller
     /**
      * نمایش لیست تمام زمان‌بندی‌ها
      */
-    public function index(Request $request)
+    public function index()
     {
-        $schedules = ClassSubjectTime::with(['class', 'teacher', 'subject'])
-            ->when($request->get('class_id'), function ($query, $classId) {
-                return $query->where('class_id', $classId);
-            })
-            ->when($request->get('teacher_id'), function ($query, $teacherId) {
-                return $query->where('teacher_id', $teacherId);
-            })
-            ->when($request->get('day_of_week'), function ($query, $day) {
-                return $query->where('day_of_week', $day);
-            })
+        $schedules = ClassSubjectTime::with(['class.grade', 'teacher', 'subject'])
             ->orderBy('day_of_week')
             ->orderBy('start_time')
             ->get();
 
-        // گروه‌بندی بر اساس روزهای هفته
-        $groupedByDay = $schedules->groupBy('day_of_week');
-
         return response()->json([
             'success' => true,
-            'data' => $schedules,
-            'grouped_by_day' => $groupedByDay,
-            'total' => $schedules->count()
-        ], 200);
+            'data' => $schedules
+        ]);
     }
+
 
     /**
      * ثبت زمان‌بندی جدید
      */
-    public function store(ClassSubjectTimeStoreRequest $request, NotificationService $notifications)
+    public function store(Request $request, NotificationService $notifications)
     {
-        $validated = $request->validated();
+        $validated = $request->validate([
+            'class_id' => 'required|exists:classes,id',
+            'teacher_id' => 'required|exists:users,id',
+            'subject_id' => 'required|exists:subjects,id',
+            'day_of_week' => 'required|in:Saturday,Sunday,Monday,Tuesday,Wednesday,Thursday',
+            'start_time' => 'required|date_format:H:i',
+            'end_time' => 'required|date_format:H:i|after:start_time',
+        ]);
 
-        DB::beginTransaction();
+        // بررسی تداخل زمانی برای معلم
+        $overlap = ClassSubjectTime::where('teacher_id', $validated['teacher_id'])
+            ->where('day_of_week', $validated['day_of_week'])
+            ->where(function ($q) use ($validated) {
+                $q->whereBetween('start_time', [$validated['start_time'], $validated['end_time']])
+                    ->orWhereBetween('end_time', [$validated['start_time'], $validated['end_time']])
+                    ->orWhere(function ($sub) use ($validated) {
+                        $sub->where('start_time', '<=', $validated['start_time'])
+                            ->where('end_time', '>=', $validated['end_time']);
+                    });
+            })
+            ->exists();
 
-        try {
-            // بررسی تداخل زمانی برای کلاس
-            $classConflict = $this->checkClassTimeConflict(
-                $validated['class_id'],
-                $validated['day_of_week'],
-                $validated['start_time'],
-                $validated['end_time']
-            );
-
-            if ($classConflict) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'این کلاس در این روز و ساعت قبلاً زمان‌بندی شده است',
-                    'conflict' => $classConflict
-                ], 409);
-            }
-
-            // بررسی تداخل زمانی برای معلم
-            $teacherConflict = $this->checkTeacherTimeConflict(
-                $validated['teacher_id'],
-                $validated['day_of_week'],
-                $validated['start_time'],
-                $validated['end_time']
-            );
-
-            if ($teacherConflict) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'این معلم در این روز و ساعت قبلاً زمان‌بندی شده است',
-                    'conflict' => $teacherConflict
-                ], 409);
-            }
-
-            // ایجاد زمان‌بندی
-            $schedule = ClassSubjectTime::create($validated);
-            $schedule->load(['class', 'teacher', 'subject']);
-
-            DB::commit();
-
-            // ثبت نوتیفیکیشن
-            $maker = $request->user();
-            $notifications->create(
-                "ثبت زمان‌بندی جدید",
-                "زمان‌بندی برای کلاس {$schedule->class->name} در روز {$schedule->day_name} برای شما ثبت شد",
-                "role_teacher_" . $validated['teacher_id'],
-                [
-                    'schedule_id' => $schedule->id,
-                    'maker' => $maker->full_name,
-                    'class_name' => $schedule->class->name
-                ]
-            );
-            $notifications->create(
-                "ثبت زمان‌بندی جدید",
-                "زمان‌بندی برای کلاس {$schedule->class->name} در روز {$schedule->day_name} ثبت شد",
-                "notification_class",
-                [
-                    'schedule_id' => $schedule->id,
-                    'maker' => $maker->full_name,
-                    'class_name' => $schedule->class->name
-                ]
-            );
-
-            return response()->json([
-                'success' => true,
-                'message' => 'زمان‌بندی با موفقیت ایجاد شد',
-                'data' => $schedule
-            ], 201);
-        } catch (\Exception $e) {
-            DB::rollBack();
+        if ($overlap) {
             return response()->json([
                 'success' => false,
-                'message' => 'خطا در ایجاد زمان‌بندی: ' . $e->getMessage()
-            ], 500);
+                'message' => 'این معلم در این زمان کلاس دیگری دارد'
+            ], 422);
         }
+
+        $schedule = ClassSubjectTime::create($validated);
+        $schedule->load(['class.grade', 'teacher', 'subject']);
+
+        $maker = $request->user();
+        $notifications->create(
+            "ثبت زمان‌بندی کلاس",
+            "زمان‌بندی جدید برای کلاس {$schedule->class->name} ثبت شد",
+            "notification_schedule",
+            [
+                'schedule_id' => $schedule->id,
+                'maker' => $maker->full_name,
+                'class' => $schedule->class->name,
+                'subject' => $schedule->subject->name
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'زمان‌بندی با موفقیت ثبت شد',
+            'data' => $schedule
+        ], 201);
     }
 
-    /**
-     * نمایش یک زمان‌بندی
-     */
     public function show($id)
     {
-        $schedule = ClassSubjectTime::with(['class', 'teacher', 'subject'])->find($id);
+        $schedule = ClassSubjectTime::with(['class.grade', 'teacher', 'subject'])
+            ->find($id);
 
         if (!$schedule) {
             return response()->json([
@@ -148,13 +105,13 @@ class ClassSubjectTimeController extends Controller
         return response()->json([
             'success' => true,
             'data' => $schedule
-        ], 200);
+        ]);
     }
 
     /**
      * بروزرسانی زمان‌بندی
      */
-    public function update(ClassSubjectTimeUpdateRequest $request, $id, NotificationService $notifications)
+    public function update(Request $request, $id, NotificationService $notifications)
     {
         $schedule = ClassSubjectTime::find($id);
 
@@ -165,92 +122,60 @@ class ClassSubjectTimeController extends Controller
             ], 404);
         }
 
-        $validated = $request->validated();
+        $validated = $request->validate([
+            'class_id' => 'sometimes|exists:classes,id',
+            'teacher_id' => 'sometimes|exists:users,id',
+            'subject_id' => 'sometimes|exists:subjects,id',
+            'day_of_week' => 'sometimes|in:Saturday,Sunday,Monday,Tuesday,Wednesday,Thursday',
+            'start_time' => 'sometimes|date_format:H:i',
+            'end_time' => 'sometimes|date_format:H:i|after:start_time',
+        ]);
 
-        DB::beginTransaction();
+        // بررسی تداخل (به جز خودش)
+        if (
+            isset($validated['teacher_id']) && isset($validated['day_of_week']) &&
+            isset($validated['start_time']) && isset($validated['end_time'])
+        ) {
+            $overlap = ClassSubjectTime::where('teacher_id', $validated['teacher_id'])
+                ->where('day_of_week', $validated['day_of_week'])
+                ->where('id', '!=', $id)
+                ->where(function ($q) use ($validated) {
+                    $q->whereBetween('start_time', [$validated['start_time'], $validated['end_time']])
+                        ->orWhereBetween('end_time', [$validated['start_time'], $validated['end_time']])
+                        ->orWhere(function ($sub) use ($validated) {
+                            $sub->where('start_time', '<=', $validated['start_time'])
+                                ->where('end_time', '>=', $validated['end_time']);
+                        });
+                })
+                ->exists();
 
-        try {
-            // استفاده از مقادیر جدید یا قدیمی برای بررسی تداخل
-            $classId = $validated['class_id'] ?? $schedule->class_id;
-            $teacherId = $validated['teacher_id'] ?? $schedule->teacher_id;
-            $dayOfWeek = $validated['day_of_week'] ?? $schedule->day_of_week;
-            $startTime = $validated['start_time'] ?? $schedule->start_time;
-            $endTime = $validated['end_time'] ?? $schedule->end_time;
-
-            // بررسی تداخل زمانی برای کلاس (به جز خود این رکورد)
-            $classConflict = $this->checkClassTimeConflict(
-                $classId,
-                $dayOfWeek,
-                $startTime,
-                $endTime,
-                $id
-            );
-
-            if ($classConflict) {
+            if ($overlap) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'این کلاس در این روز و ساعت قبلاً زمان‌بندی شده است',
-                    'conflict' => $classConflict
-                ], 409);
+                    'message' => 'این معلم در این زمان کلاس دیگری دارد'
+                ], 422);
             }
-
-            // بررسی تداخل زمانی برای معلم (به جز خود این رکورد)
-            $teacherConflict = $this->checkTeacherTimeConflict(
-                $teacherId,
-                $dayOfWeek,
-                $startTime,
-                $endTime,
-                $id
-            );
-
-            if ($teacherConflict) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'این معلم در این روز و ساعت قبلاً زمان‌بندی شده است',
-                    'conflict' => $teacherConflict
-                ], 409);
-            }
-
-            // بروزرسانی زمان‌بندی
-            $schedule->update($validated);
-            $schedule->load(['class', 'teacher', 'subject']);
-
-            DB::commit();
-
-            // ثبت نوتیفیکیشن
-            $maker = $request->user();
-            $notifications->create(
-                "بروزرسانی زمان‌بندی جدید",
-                "زمان‌بندی برای کلاس {$schedule->class->name} در روز {$schedule->day_name} برای شما بروزرسانی شد",
-                "role_teacher_" . $validated['teacher_id'],
-                [
-                    'schedule_id' => $schedule->id,
-                    'maker' => $maker->full_name,
-                    'class_name' => $schedule->class->name
-                ]
-            );
-            $notifications->create(
-                "بروزرسانی زمان‌بندی",
-                "زمان‌بندی کلاس {$schedule->class->name} بروزرسانی شد",
-                "notification_class",
-                [
-                    'schedule_id' => $schedule->id,
-                    'maker' => $maker->full_name
-                ]
-            );
-
-            return response()->json([
-                'success' => true,
-                'message' => 'زمان‌بندی با موفقیت بروزرسانی شد',
-                'data' => $schedule
-            ], 200);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در بروزرسانی: ' . $e->getMessage()
-            ], 500);
         }
+
+        $schedule->update($validated);
+        $schedule->load(['class.grade', 'teacher', 'subject']);
+
+        $maker = $request->user();
+        $notifications->create(
+            "بروزرسانی زمان‌بندی",
+            "زمان‌بندی کلاس {$schedule->class->name} بروزرسانی شد",
+            "notification_schedule",
+            [
+                'schedule_id' => $schedule->id,
+                'maker' => $maker->full_name
+            ]
+        );
+
+        return response()->json([
+            'success' => true,
+            'message' => 'زمان‌بندی با موفقیت بروزرسانی شد',
+            'data' => $schedule
+        ]);
     }
 
     /**
@@ -267,53 +192,30 @@ class ClassSubjectTimeController extends Controller
             ], 404);
         }
 
-        DB::beginTransaction();
+        $scheduleData = [
+            'class' => $schedule->class->name,
+            'subject' => $schedule->subject->name,
+            'day' => $schedule->day_of_week,
+            'time' => $schedule->start_time . ' - ' . $schedule->end_time
+        ];
 
-        try {
-            $scheduleInfo = [
-                'class_name' => $schedule->class->name ?? 'نامشخص',
-                'day_name' => $schedule->day_name,
-                'time_range' => $schedule->time_range
-            ];
+        $schedule->delete();
 
-            $schedule->delete();
+        $maker = request()->user();
+        $notifications->create(
+            "حذف زمان‌بندی",
+            "زمان‌بندی کلاس {$scheduleData['class']} حذف شد",
+            "notification_schedule",
+            [
+                'maker' => $maker->full_name,
+                'deleted_schedule' => $scheduleData
+            ]
+        );
 
-            DB::commit();
-
-            // ثبت نوتیفیکیشن
-            $maker = request()->user();
-            $notifications->create(
-                "بروزرسانی زمان‌بندی جدید",
-                "زمان‌بندی برای کلاس {$schedule->class->name} در روز {$schedule->day_name} برای شما بروزرسانی شد",
-                "role_teacher_" . $schedule->teacher_id,
-                [
-                    'schedule_id' => $schedule->id,
-                    'maker' => $maker->full_name,
-                    'class_name' => $schedule->class->name
-                ]
-            );
-            $notifications->create(
-                "حذف زمان‌بندی",
-                "زمان‌بندی کلاس {$scheduleInfo['class_name']} در روز {$scheduleInfo['day_name']} حذف شد",
-                "notification_class",
-                [
-                    'deleted_schedule_id' => $id,
-                    'maker' => $maker->full_name
-                ]
-            );
-
-            return response()->json([
-                'success' => true,
-                'message' => 'زمان‌بندی با موفقیت حذف شد',
-                'deleted_info' => $scheduleInfo
-            ], 200);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'success' => false,
-                'message' => 'خطا در حذف: ' . $e->getMessage()
-            ], 500);
-        }
+        return response()->json([
+            'success' => true,
+            'message' => 'زمان‌بندی با موفقیت حذف شد'
+        ]);
     }
 
     /**
@@ -330,23 +232,20 @@ class ClassSubjectTimeController extends Controller
             ], 404);
         }
 
-        $schedule = ClassSubjectTime::with(['teacher', 'subject'])
+        $schedules = ClassSubjectTime::with(['teacher', 'subject'])
             ->where('class_id', $classId)
             ->orderBy('day_of_week')
             ->orderBy('start_time')
-            ->get()
-            ->groupBy('day_of_week');
+            ->get();
 
         return response()->json([
             'success' => true,
             'data' => [
-                'class' => $class,
-                'schedule' => $schedule,
-                'weekly_schedule' => $this->formatWeeklySchedule($schedule)
+                'class' => $class->load('grade'),
+                'schedules' => $schedules
             ]
-        ], 200);
+        ]);
     }
-
     /**
      * دریافت برنامه هفتگی یک معلم
      */
@@ -392,23 +291,20 @@ class ClassSubjectTimeController extends Controller
             ], 404);
         }
 
-        $schedule = ClassSubjectTime::with(['class', 'teacher'])
+        $schedules = ClassSubjectTime::with(['class.grade', 'teacher'])
             ->where('subject_id', $subjectId)
             ->orderBy('day_of_week')
             ->orderBy('start_time')
-            ->get()
-            ->groupBy('day_of_week');
+            ->get();
 
         return response()->json([
             'success' => true,
             'data' => [
                 'subject' => $subject,
-                'schedule' => $schedule,
-                'weekly_schedule' => $this->formatWeeklySchedule($schedule)
+                'schedules' => $schedules
             ]
-        ], 200);
+        ]);
     }
-
     /**
      * بررسی تداخل زمانی برای کلاس
      */
@@ -502,25 +398,79 @@ class ClassSubjectTimeController extends Controller
             ], 404);
         }
 
-        $busyTimes = ClassSubjectTime::where('class_id', $classId)
+        $schedules = ClassSubjectTime::where('class_id', $classId)
             ->where('day_of_week', $dayOfWeek)
             ->orderBy('start_time')
-            ->get(['start_time', 'end_time']);
+            ->get();
 
-        $workStart = '07:00';
-        $workEnd = '20:00';
-        $freeTimes = $this->calculateFreeTimes($busyTimes, $workStart, $workEnd);
+        $freeTimes = [];
+        $start = '08:00'; // شروع روز
+        $end = '14:00';   // پایان روز
+
+        if ($schedules->isEmpty()) {
+            $freeTimes[] = [
+                'start' => $start,
+                'end' => $end
+            ];
+        } else {
+            $lastEnd = $start;
+
+            foreach ($schedules as $schedule) {
+                if ($schedule->start_time > $lastEnd) {
+                    $freeTimes[] = [
+                        'start' => $lastEnd,
+                        'end' => $schedule->start_time
+                    ];
+                }
+                if ($schedule->end_time > $lastEnd) {
+                    $lastEnd = $schedule->end_time;
+                }
+            }
+
+            if ($lastEnd < $end) {
+                $freeTimes[] = [
+                    'start' => $lastEnd,
+                    'end' => $end
+                ];
+            }
+        }
+
         return response()->json([
             'success' => true,
             'data' => [
-                'class' => $class->name,
-                'day' => $this->getDayName($dayOfWeek),
-                'busy_times' => $busyTimes,
+                'class_id' => $classId,
+                'class_name' => $class->name,
+                'day' => $dayOfWeek,
                 'free_times' => $freeTimes
             ]
-        ], 200);
+        ]);
     }
 
+    public function getFormData()
+    {
+        $teachers = User::whereHas('roles', function ($q) {
+            $q->where('slug', 'teacher');
+        })->get(['id', 'first_name', 'last_name']);
+
+        $subjects = Subject::all(['id', 'name']);
+
+        $classes = Classes::with('grade')->get(['id', 'name', 'grade_id']);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'teachers' => $teachers->map(fn($t) => [
+                    'id' => $t->id,
+                    'name' => $t->full_name
+                ]),
+                'subjects' => $subjects,
+                'classes' => $classes->map(fn($c) => [
+                    'id' => $c->id,
+                    'name' => $c->full_name
+                ])
+            ]
+        ]);
+    }
     /**
      * محاسبه زمان‌های آزاد
      */
