@@ -313,7 +313,7 @@ class StudentController extends Controller
     {
         $validatedData = $request->validated();
         $studentId = $validatedData['student_id'];
-        $student = Student::firstOrFail($studentId);
+        $student = Student::findOrFail($studentId);
         $user = $request->user();
 
         $studentDetail = MedicalInformation::where('student_id', $studentId)->first();
@@ -377,7 +377,7 @@ class StudentController extends Controller
     {
         $validatedData = $request->validated();
         $studentId = $validatedData['student_id'];
-        $student = Student::firstOrFail($studentId);
+        $student = Student::findOrFail($studentId);
         $user = $request->user();
         $drug = Medication::create($validatedData);
         $notifications->create(
@@ -456,7 +456,7 @@ class StudentController extends Controller
     public function destroyDrug(Request $request, $id, NotificationService $notifications)
     {
         $drug = Medication::findOrFail($id);
-        $student = Student::firstOrFail($drug->student_id);
+        $student = Student::findOrFail($drug->student_id);
         $drug->delete();
         $user = $request->user();
         $notifications->create(
