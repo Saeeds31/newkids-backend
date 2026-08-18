@@ -5,7 +5,9 @@ namespace Modules\Task\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Modules\Class\Models\Classes;
 use Modules\Notifications\Services\NotificationService;
+use Modules\Skills\Models\Skills;
 use Modules\Student\Models\Student;
 use Modules\Task\Models\RoutineSchedules;
 use Modules\Task\Models\Task;
@@ -13,9 +15,129 @@ use Modules\Task\Models\TaskAssignment;
 use Modules\Task\Models\TaskEvaluationCriteria;
 use Modules\Task\Models\TaskResultEvaluation;
 use Modules\Task\Models\TaskResults;
+use Modules\Traits\Models\Traits;
+use Modules\Users\Models\User;
 
 class TaskController extends Controller
 {
+
+    public function getCriteriaOptions()
+    {
+        $traits = Traits::select('id', 'name', 'key', 'color_code', 'icon')->get();
+        $skills = Skills::select('id', 'name', 'key', 'color_code', 'icon')->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'traits' => $traits->map(fn($t) => [
+                    'id' => $t->id,
+                    'name' => $t->name,
+                    'key' => $t->key,
+                    'color' => $t->color_code ?? '#6B7280',
+                    'icon' => $t->icon ?? '📌',
+                    'type' => 'trait'
+                ]),
+                'skills' => $skills->map(fn($s) => [
+                    'id' => $s->id,
+                    'name' => $s->name,
+                    'key' => $s->key,
+                    'color' => $s->color_code ?? '#6B7280',
+                    'icon' => $s->icon ?? '📌',
+                    'type' => 'skill'
+                ])
+            ]
+        ]);
+    }
+    public function getAssignmentOptions()
+    {
+        $classes = Classes::with('grade')->get();
+        $teachers = User::whereHas('roles', function ($q) {
+            $q->where('slug', 'teacher');
+        })->get(['id', 'first_name', 'last_name']);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'classes' => $classes->map(fn($c) => [
+                    'id' => $c->id,
+                    'name' => $c->full_name
+                ]),
+                'teachers' => $teachers->map(fn($t) => [
+                    'id' => $t->id,
+                    'name' => $t->full_name
+                ])
+            ]
+        ]);
+    }
+    public function getTasksByStatus(Request $request)
+    {
+        $status = $request->get('status', 'all');
+
+        $query = Task::with([
+            'creator',
+            'taskAssignments.class',
+            'taskAssignments.teacher',
+            'evaluationCriteria'
+        ]);
+
+        if ($status !== 'all') {
+            $query->where('status', $status);
+        }
+
+        $tasks = $query->latest()->paginate(20);
+
+        return response()->json([
+            'success' => true,
+            'data' => $tasks
+        ]);
+    }
+    public function getTasksSummary()
+    {
+        $summary = [
+            'total' => Task::count(),
+            'todo' => Task::where('status', 'todo')->count(),
+            'doing' => Task::where('status', 'doing')->count(),
+            'done' => Task::where('status', 'done')->count(),
+            'closed' => Task::where('status', 'closed')->count(),
+            'routine' => Task::where('type', 'routine')->count(),
+            'once' => Task::where('type', 'once')->count(),
+        ];
+
+        return response()->json([
+            'success' => true,
+            'data' => $summary
+        ]);
+    }
+    public function getTasksForClass($classId)
+    {
+        $tasks = Task::whereHas('taskAssignments', function ($q) use ($classId) {
+            $q->where('class_id', $classId);
+        })->with([
+            'creator',
+            'taskAssignments.teacher',
+            'evaluationCriteria'
+        ])->latest()->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $tasks
+        ]);
+    }
+    public function getTasksForTeacher($teacherId)
+    {
+        $tasks = Task::whereHas('taskAssignments', function ($q) use ($teacherId) {
+            $q->where('teacher_id', $teacherId);
+        })->with([
+            'creator',
+            'taskAssignments.class',
+            'evaluationCriteria'
+        ])->latest()->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $tasks
+        ]);
+    }
 
 
     public function completeTask(Request $request, $taskId, NotificationService $notifications)
