@@ -12,8 +12,8 @@ Route::middleware(['auth:sanctum'])->prefix('v1/manager')->group(function () {
 Route::middleware(['auth:sanctum'])->prefix('v1/manager')->group(function () {
     Route::apiResource('classes-time', ClassSubjectTimeController::class)->names('class');
 
+    Route::get('/classes-time-form-data', [ClassSubjectTimeController::class, 'getFormData']);
     Route::prefix('classes-time')->group(function () {
-        Route::get('/form-data', [ClassSubjectTimeController::class, 'getFormData']);
         Route::get('/class/{classId}', [ClassSubjectTimeController::class, 'getClassSchedule']);
         Route::get('/subject/{subjectId}', [ClassSubjectTimeController::class, 'getSubjectSchedule']);
         Route::get('/class/{classId}/free-times/{dayOfWeek}', [ClassSubjectTimeController::class, 'getFreeTimes']);
