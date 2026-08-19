@@ -70,8 +70,7 @@ class TaskEvaluationCriteria extends Model
      */
     public function trait()
     {
-        return $this->belongsTo(Traits::class, 'criterion_id')
-            ->where('criterion_type', self::TYPE_TRAIT);
+        return $this->belongsTo(Traits::class, 'criterion_id');
     }
 
     /**
@@ -79,8 +78,7 @@ class TaskEvaluationCriteria extends Model
      */
     public function skill()
     {
-        return $this->belongsTo(Skills::class, 'criterion_id')
-            ->where('criterion_type', self::TYPE_SKILL);
+        return $this->belongsTo(Skills::class, 'criterion_id');
     }
 
     /**

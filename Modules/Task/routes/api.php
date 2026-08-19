@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Modules\Task\Http\Controllers\TaskController;
-
+use Modules\Task\Http\Controllers\TeacherTaskController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1/manager')->group(function () {
     Route::apiResource('tasks', TaskController::class);
@@ -19,4 +19,13 @@ Route::middleware(['auth:sanctum'])->prefix('v1/manager')->group(function () {
         Route::post('/{taskId}/complete', [TaskController::class, 'completeTask']);
         Route::post('/result', [TaskController::class, 'storeResult']);
     });
+});
+
+Route::middleware(['auth:sanctum'])->prefix('v1/teacher-tasks')->group(function () {
+    // وظایف معلم
+    Route::get('/', [TeacherTaskController::class, 'index']);
+    Route::get('/statistics', [TeacherTaskController::class, 'getStatistics']);
+    Route::get('/classes', [TeacherTaskController::class, 'getClasses']);
+    Route::get('/{taskId}/record', [TeacherTaskController::class, 'getTaskForRecording']);
+    Route::post('/result', [TeacherTaskController::class, 'storeResult']);
 });
