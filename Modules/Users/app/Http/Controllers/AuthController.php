@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
+use Modules\Activity\Services\ActivityLogger;
 use Modules\Notifications\Services\NotificationService;
 use Modules\Users\Models\Otp;
 use Modules\Users\Models\Role;
@@ -61,6 +62,12 @@ class AuthController extends Controller
         }
         $token = $user->createToken('auth_token')->plainTextToken;
         $permissions = $user->permissions;
+        $roles = $user->roles->pluck('slug')->toArray();
+        if (in_array('teacher', $roles)) {
+            $description = "ورود به سیستم توسط '{$user->full_name}'";
+            ActivityLogger::log($user, 'login', $description);
+        }
+
         return response()->json([
             'user' => $user,
             'success' => true,
@@ -130,6 +137,11 @@ class AuthController extends Controller
             $token = $user->createToken('auth_token')->plainTextToken;
             $otp->delete();
             $permissions = $user->permissions;
+            $roles = $user->roles->pluck('slug')->toArray();
+            if (in_array('teacher', $roles)) {
+                $description = "ورود به سیستم توسط '{$user->full_name}'";
+                ActivityLogger::log($user, 'login', $description);
+            }
             return response()->json([
                 'success' => true,
                 'user' => $user,
@@ -140,7 +152,7 @@ class AuthController extends Controller
 
         return response()->json(['status' => 'need_register']);
     }
- 
+
 
     public function logout(Request $request)
     {
