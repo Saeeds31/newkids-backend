@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Modules\Activity\Http\Controllers\ActivityController;
 use Modules\Activity\Http\Controllers\DashboardController;
+use Modules\Activity\Http\Controllers\ParentDashboardController;
 use Modules\Activity\Http\Controllers\TeacherDashboardController;
 
 Route::middleware(['auth:sanctum'])->prefix('v1')->group(function () {
@@ -21,4 +22,10 @@ Route::middleware(['auth:sanctum'])->prefix('v1/manager-activities')->group(func
 Route::middleware(['auth:sanctum'])->prefix('v1/teacher')->group(function () {
     // داشبورد معلم
     Route::get('/dashboard', [TeacherDashboardController::class, 'index'])->name('TeacherDashboardControllerindex');
+});
+
+Route::middleware(['auth:sanctum'])->prefix('v1/parent')->group(function () {
+    // داشبورد والدین
+    Route::get('/dashboard', [ParentDashboardController::class, 'index']);
+    Route::get('/children/{childId}', [ParentDashboardController::class, 'getChildDetail']);
 });
