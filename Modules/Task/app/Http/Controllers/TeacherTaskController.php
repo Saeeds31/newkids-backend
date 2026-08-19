@@ -27,16 +27,16 @@ class TeacherTaskController extends Controller
         $classId = $request->get('class_id');
         $search = $request->get('search');
 
-        $query = Task::whereHas('taskAssignments', function($q) use ($teacher) {
+        $query = Task::whereHas('taskAssignments', function ($q) use ($teacher) {
             $q->where('teacher_id', $teacher->id);
         })
-        ->with([
-            'creator',
-            'taskAssignments.class',
-            'taskAssignments.teacher',
-            'evaluationCriteria',
-            'routineSchedule'
-        ]);
+            ->with([
+                'creator',
+                'taskAssignments.class',
+                'taskAssignments.teacher',
+                'evaluationCriteria',
+                'routineSchedule'
+            ]);
 
         // فیلتر وضعیت
         if ($status !== 'all') {
@@ -50,32 +50,32 @@ class TeacherTaskController extends Controller
 
         // فیلتر کلاس
         if ($classId) {
-            $query->whereHas('taskAssignments', function($q) use ($classId) {
+            $query->whereHas('taskAssignments', function ($q) use ($classId) {
                 $q->where('class_id', $classId);
             });
         }
 
         // جستجو
         if ($search) {
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('title', 'like', "%{$search}%")
-                  ->orWhere('description', 'like', "%{$search}%");
+                    ->orWhere('description', 'like', "%{$search}%");
             });
         }
 
         $tasks = $query->orderBy('created_at', 'desc')->get();
 
         // افزودن اطلاعات تکمیلی برای هر تسک
-        $tasks = $tasks->map(function($task) use ($teacher) {
+        $tasks = $tasks->map(function ($task) use ($teacher) {
             $assignment = $task->taskAssignments->first();
             $classId = $assignment?->class_id;
-            
+
             // تعداد دانش‌آموزان کلاس
             $totalStudents = $classId ? Student::where('class_id', $classId)->count() : 0;
-            
+
             // تعداد نتایج ثبت شده
             $resultsCount = TaskResults::where('task_id', $task->id)
-                ->whereHas('student', function($q) use ($classId) {
+                ->whereHas('student', function ($q) use ($classId) {
                     if ($classId) {
                         $q->where('class_id', $classId);
                     }
@@ -115,7 +115,7 @@ class TeacherTaskController extends Controller
                     'end_time' => $task->routineSchedule->end_time,
                     'duration_days' => $task->routineSchedule->duration_days,
                 ] : null,
-                'evaluation_criteria' => $task->evaluationCriteria->map(function($c) {
+                'evaluation_criteria' => $task->evaluationCriteria->map(function ($c) {
                     return [
                         'id' => $c->id,
                         'criterion_type' => $c->criterion_type,
@@ -161,7 +161,6 @@ class TeacherTaskController extends Controller
             ], 404);
         }
 
-        // بررسی دسترسی معلم
         $assignment = $task->taskAssignments->first();
         if (!$assignment || $assignment->teacher_id != $teacher->id) {
             return response()->json([
@@ -181,7 +180,7 @@ class TeacherTaskController extends Controller
 
         // دریافت نتایج ثبت شده برای این تسک
         $existingResults = TaskResults::where('task_id', $taskId)
-            ->whereHas('student', function($q) use ($classId) {
+            ->whereHas('student', function ($q) use ($classId) {
                 $q->where('class_id', $classId);
             })
             ->with('evaluations')
@@ -189,9 +188,9 @@ class TeacherTaskController extends Controller
             ->keyBy('student_id');
 
         // ساختار داده برای هر دانش‌آموز
-        $studentsData = $students->map(function($student) use ($existingResults, $task) {
+        $studentsData = $students->map(function ($student) use ($existingResults, $task) {
             $result = $existingResults->get($student->id);
-            
+
             return [
                 'id' => $student->id,
                 'first_name' => $student->first_name,
@@ -200,12 +199,12 @@ class TeacherTaskController extends Controller
                 'avatar' => $student->avatar,
                 'has_result' => (bool) $result,
                 'result_id' => $result?->id,
-                'evaluations' => $result ? $result->evaluations->map(function($e) {
+                'evaluations' => $result ? $result->evaluations->map(function ($e) {
                     return [
                         'evaluation_criterion_id' => $e->evaluation_criterion_id,
                         'score' => $e->score,
                     ];
-                }) : [],
+                }) : collect(),
             ];
         });
 
@@ -228,7 +227,7 @@ class TeacherTaskController extends Controller
                         'name' => $assignment->class->full_name,
                     ],
                 ],
-                'evaluation_criteria' => $task->evaluationCriteria->map(function($c) {
+                'evaluation_criteria' => $task->evaluationCriteria->map(function ($c) {
                     return [
                         'id' => $c->id,
                         'criterion_type' => $c->criterion_type,
@@ -244,12 +243,99 @@ class TeacherTaskController extends Controller
                 'statistics' => [
                     'total' => $students->count(),
                     'completed' => $existingResults->count(),
-                    'progress' => $students->count() > 0 
-                        ? round(($existingResults->count() / $students->count()) * 100, 2) 
+                    'progress' => $students->count() > 0
+                        ? round(($existingResults->count() / $students->count()) * 100, 2)
                         : 0,
                 ]
             ]
         ]);
+    }
+    public function storeBulkResults(Request $request)
+    {
+        $validated = $request->validate([
+            'task_id' => 'required|exists:tasks,id',
+            'results' => 'required|array|min:1',
+            'results.*.student_id' => 'required|exists:students,id',
+            'results.*.evaluations' => 'required|array|min:1',
+            'results.*.evaluations.*.evaluation_criterion_id' => 'required|exists:task_evaluation_criteria,id',
+            'results.*.evaluations.*.score' => 'required|numeric|min:0',
+            'results.*.description' => 'nullable|string|max:1000',
+        ]);
+
+        $teacher = $request->user();
+
+        DB::beginTransaction();
+
+        try {
+            // بررسی دسترسی معلم به این تسک
+            $assignment = TaskAssignment::where('task_id', $validated['task_id'])
+                ->where('teacher_id', $teacher->id)
+                ->first();
+
+            if (!$assignment) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'شما دسترسی به این وظیفه ندارید'
+                ], 403);
+            }
+
+            $classId = $assignment->class_id;
+            $results = [];
+
+            foreach ($validated['results'] as $resultData) {
+                // بررسی اینکه دانش‌آموز در کلاس این تسک است
+                $student = Student::where('id', $resultData['student_id'])
+                    ->where('class_id', $classId)
+                    ->first();
+
+                if (!$student) {
+                    continue; // یا throw exception
+                }
+
+                // پیدا کردن یا ایجاد نتیجه
+                $result = TaskResults::updateOrCreate(
+                    [
+                        'task_id' => $validated['task_id'],
+                        'student_id' => $resultData['student_id'],
+                    ],
+                    [
+                        'description' => $resultData['description'] ?? null,
+                        'recorded_by' => $teacher->id,
+                    ]
+                );
+
+                // حذف ارزیابی‌های قبلی
+                $result->evaluations()->delete();
+
+                // ایجاد ارزیابی‌های جدید
+                foreach ($resultData['evaluations'] as $evaluation) {
+                    TaskResultEvaluation::create([
+                        'task_result_id' => $result->id,
+                        'evaluation_criterion_id' => $evaluation['evaluation_criterion_id'],
+                        'score' => $evaluation['score'],
+                    ]);
+                }
+
+                $results[] = $result->load('evaluations');
+            }
+
+            // بروزرسانی وضعیت تسک
+            $this->updateTaskStatus($validated['task_id'], $classId);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'نتایج با موفقیت ثبت شد',
+                'data' => $results
+            ], 200);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'خطا در ثبت نتایج: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
@@ -329,7 +415,6 @@ class TeacherTaskController extends Controller
                 'message' => 'نتیجه با موفقیت ثبت شد',
                 'data' => $result->load('evaluations')
             ], 200);
-
         } catch (\Exception $e) {
             DB::rollBack();
             return response()->json([
@@ -349,7 +434,7 @@ class TeacherTaskController extends Controller
 
         $totalStudents = Student::where('class_id', $classId)->count();
         $completedResults = TaskResults::where('task_id', $taskId)
-            ->whereHas('student', function($q) use ($classId) {
+            ->whereHas('student', function ($q) use ($classId) {
                 $q->where('class_id', $classId);
             })
             ->count();
@@ -374,19 +459,19 @@ class TeacherTaskController extends Controller
     {
         $teacher = $request->user();
 
-        $totalTasks = Task::whereHas('taskAssignments', function($q) use ($teacher) {
+        $totalTasks = Task::whereHas('taskAssignments', function ($q) use ($teacher) {
             $q->where('teacher_id', $teacher->id);
         })->count();
 
-        $todoTasks = Task::whereHas('taskAssignments', function($q) use ($teacher) {
+        $todoTasks = Task::whereHas('taskAssignments', function ($q) use ($teacher) {
             $q->where('teacher_id', $teacher->id);
         })->where('status', 'todo')->count();
 
-        $doingTasks = Task::whereHas('taskAssignments', function($q) use ($teacher) {
+        $doingTasks = Task::whereHas('taskAssignments', function ($q) use ($teacher) {
             $q->where('teacher_id', $teacher->id);
         })->where('status', 'doing')->count();
 
-        $doneTasks = Task::whereHas('taskAssignments', function($q) use ($teacher) {
+        $doneTasks = Task::whereHas('taskAssignments', function ($q) use ($teacher) {
             $q->where('teacher_id', $teacher->id);
         })->whereIn('status', ['done', 'closed'])->count();
 
@@ -408,17 +493,17 @@ class TeacherTaskController extends Controller
     {
         $teacher = $request->user();
 
-        $classes = \Modules\Class\Models\Classes::whereHas('classSubjectTimes', function($q) use ($teacher) {
+        $classes = \Modules\Class\Models\Classes::whereHas('classSubjectTimes', function ($q) use ($teacher) {
             $q->where('teacher_id', $teacher->id);
         })
-        ->with('grade')
-        ->get()
-        ->map(function($class) {
-            return [
-                'id' => $class->id,
-                'name' => $class->full_name,
-            ];
-        });
+            ->with('grade')
+            ->get()
+            ->map(function ($class) {
+                return [
+                    'id' => $class->id,
+                    'name' => $class->full_name,
+                ];
+            });
 
         return response()->json([
             'success' => true,

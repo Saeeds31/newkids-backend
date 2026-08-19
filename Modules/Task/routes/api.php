@@ -27,5 +27,6 @@ Route::middleware(['auth:sanctum'])->prefix('v1/teacher-tasks')->group(function 
     Route::get('/statistics', [TeacherTaskController::class, 'getStatistics']);
     Route::get('/classes', [TeacherTaskController::class, 'getClasses']);
     Route::get('/{taskId}/record', [TeacherTaskController::class, 'getTaskForRecording']);
-    Route::post('/result', [TeacherTaskController::class, 'storeResult']);
+    Route::post('/result', [TeacherTaskController::class, 'storeResult']); // تک دانش‌آموز
+    Route::post('/results/bulk', [TeacherTaskController::class, 'storeBulkResults']);
 });
