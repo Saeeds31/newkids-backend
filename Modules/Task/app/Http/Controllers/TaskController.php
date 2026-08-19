@@ -5,6 +5,7 @@ namespace Modules\Task\Http\Controllers;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Modules\Activity\Services\ActivityLogger;
 use Modules\Class\Models\Classes;
 use Modules\Notifications\Services\NotificationService;
 use Modules\Skills\Models\Skills;
@@ -478,7 +479,8 @@ class TaskController extends Controller
                     'type' => $task->type
                 ]
             );
-
+            $description = "ثبت  وظیفه '{$task->title}' توسط : {$task->creator->full_name}";
+            ActivityLogger::log($task, 'store_task', $description);
             // ثبت نوتیفیکیشن برای معلمان
             if (!empty($validated['assignments'])) {
                 foreach ($validated['assignments'] as $assignment) {
@@ -751,7 +753,8 @@ class TaskController extends Controller
                     'new_type' => $newType
                 ]
             );
-
+            $description = "ویرایش  وظیفه '{$task->title}' توسط : {$task->creator->full_name}";
+            ActivityLogger::log($task, 'update_task', $description);
             return response()->json([
                 'success' => true,
                 'message' => 'وظیفه با موفقیت بروزرسانی شد' . ($typeChanged ? " و نوع آن تغییر کرد" : ""),
@@ -791,7 +794,8 @@ class TaskController extends Controller
 
         try {
             $taskTitle = $task->title;
-
+            $description = "حذف  وظیفه '{$taskTitle}' توسط : {$task->creator->full_name}";
+            ActivityLogger::log($task, 'update_task', $description);
             // حذف cascade انجام میشه (با توجه به foreign key constraints)
             $task->delete();
 

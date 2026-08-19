@@ -11,6 +11,7 @@ use Modules\Task\Models\TaskResults;
 use Modules\Task\Models\TaskEvaluationCriteria;
 use Modules\Task\Models\TaskResultEvaluation;
 use Modules\Student\Models\Student;
+use Modules\Activity\Services\ActivityLogger;
 use Modules\Users\Models\User;
 use Carbon\Carbon;
 
@@ -65,15 +66,14 @@ class TeacherTaskController extends Controller
 
         $tasks = $query->orderBy('created_at', 'desc')->get();
 
-        // افزودن اطلاعات تکمیلی برای هر تسک
-        $tasks = $tasks->map(function ($task) use ($teacher) {
+        $now = Carbon::now();
+
+        $tasks = $tasks->map(function ($task) use ($teacher, $now) {
             $assignment = $task->taskAssignments->first();
             $classId = $assignment?->class_id;
 
-            // تعداد دانش‌آموزان کلاس
             $totalStudents = $classId ? Student::where('class_id', $classId)->count() : 0;
 
-            // تعداد نتایج ثبت شده
             $resultsCount = TaskResults::where('task_id', $task->id)
                 ->whereHas('student', function ($q) use ($classId) {
                     if ($classId) {
@@ -82,11 +82,35 @@ class TeacherTaskController extends Controller
                 })
                 ->count();
 
-            // درصد پیشرفت
             $progress = $totalStudents > 0 ? round(($resultsCount / $totalStudents) * 100, 2) : 0;
 
-            // بررسی اینکه آیا معلم می‌تواند برای این تسک نتیجه ثبت کند
-            $canRecord = $task->status !== 'closed' && $task->status !== 'done';
+            // ========== بررسی قابلیت ثبت نتیجه ==========
+            $canRecord = true;
+            $cannotRecordReason = null;
+
+            // 1. بررسی وضعیت تسک
+            if ($task->status === 'closed' || $task->status === 'done') {
+                $canRecord = false;
+                $cannotRecordReason = 'این وظیفه بسته شده است';
+            }
+
+            // 2. بررسی تاریخ شروع برای تسک‌های یکباره
+            if ($task->type === 'once' && $task->start_date) {
+                $startDate = Carbon::parse($task->start_date);
+                if ($now->lt($startDate)) {
+                    $canRecord = false;
+                    $cannotRecordReason = 'زمان شروع این وظیفه ' . $startDate->format('Y/m/d H:i') . ' است';
+                }
+            }
+
+            // 3. بررسی تاریخ انقضا برای تسک‌های روتین
+            if ($task->type === 'routine' && $task->routineSchedule) {
+                $expireAt = Carbon::parse($task->routineSchedule->routine_expire_at);
+                if ($now->gt($expireAt)) {
+                    $canRecord = false;
+                    $cannotRecordReason = 'این وظیفه روتین منقضی شده است';
+                }
+            }
 
             return [
                 'id' => $task->id,
@@ -114,6 +138,7 @@ class TeacherTaskController extends Controller
                     'start_time' => $task->routineSchedule->start_time,
                     'end_time' => $task->routineSchedule->end_time,
                     'duration_days' => $task->routineSchedule->duration_days,
+                    'routine_expire_at' => $task->routineSchedule->routine_expire_at?->toDateTimeString(),
                 ] : null,
                 'evaluation_criteria' => $task->evaluationCriteria->map(function ($c) {
                     return [
@@ -130,6 +155,7 @@ class TeacherTaskController extends Controller
                     'results_count' => $resultsCount,
                     'progress' => $progress,
                     'can_record' => $canRecord,
+                    'cannot_record_reason' => $cannotRecordReason,
                 ]
             ];
         });
@@ -139,6 +165,7 @@ class TeacherTaskController extends Controller
             'data' => $tasks
         ]);
     }
+
 
     /**
      * دریافت جزئیات یک وظیفه برای ثبت نتیجه
@@ -281,6 +308,7 @@ class TeacherTaskController extends Controller
 
             $classId = $assignment->class_id;
             $results = [];
+            $studentNames = [];
 
             foreach ($validated['results'] as $resultData) {
                 // بررسی اینکه دانش‌آموز در کلاس این تسک است
@@ -289,8 +317,10 @@ class TeacherTaskController extends Controller
                     ->first();
 
                 if (!$student) {
-                    continue; // یا throw exception
+                    continue;
                 }
+
+                $studentNames[] = $student->full_name;
 
                 // پیدا کردن یا ایجاد نتیجه
                 $result = TaskResults::updateOrCreate(
@@ -320,9 +350,21 @@ class TeacherTaskController extends Controller
             }
 
             // بروزرسانی وضعیت تسک
+            $task = Task::find($validated['task_id']);
             $this->updateTaskStatus($validated['task_id'], $classId);
 
             DB::commit();
+
+            // ========== ثبت فعالیت (Activity Log) ==========
+            $taskTitle = $task?->title ?? 'نامشخص';
+            $studentsList = implode('، ', array_slice($studentNames, 0, 5));
+            if (count($studentNames) > 5) {
+                $studentsList .= ' و ' . (count($studentNames) - 5) . ' نفر دیگر';
+            }
+
+            $description = "ثبت نتایج وظیفه '{$taskTitle}' برای دانش‌آموزان: {$studentsList}";
+
+            ActivityLogger::log($task, 'store_results', $description);
 
             return response()->json([
                 'success' => true,
@@ -406,9 +448,17 @@ class TeacherTaskController extends Controller
             }
 
             // بروزرسانی وضعیت تسک
+            $task = Task::find($validated['task_id']);
             $this->updateTaskStatus($validated['task_id'], $assignment->class_id);
 
             DB::commit();
+
+            // ========== ثبت فعالیت (Activity Log) ==========
+            $taskTitle = $task?->title ?? 'نامشخص';
+            $studentName = $student->full_name ?? 'نامشخص';
+            $description = "ثبت نتیجه وظیفه '{$taskTitle}' برای دانش‌آموز {$studentName}";
+
+            ActivityLogger::log($task, 'store_result', $description);
 
             return response()->json([
                 'success' => true,
@@ -423,7 +473,6 @@ class TeacherTaskController extends Controller
             ], 500);
         }
     }
-
     /**
      * بروزرسانی وضعیت تسک بر اساس تعداد نتایج ثبت شده
      */
@@ -432,6 +481,7 @@ class TeacherTaskController extends Controller
         $task = Task::find($taskId);
         if (!$task) return;
 
+        $oldStatus = $task->status;
         $totalStudents = Student::where('class_id', $classId)->count();
         $completedResults = TaskResults::where('task_id', $taskId)
             ->whereHas('student', function ($q) use ($classId) {
@@ -450,6 +500,21 @@ class TeacherTaskController extends Controller
         }
 
         $task->update(['status' => $newStatus]);
+
+        // ========== ثبت فعالیت تغییر وضعیت تسک (اگر تغییر کرده باشد) ==========
+        if ($oldStatus !== $newStatus) {
+            $statusLabels = [
+                'todo' => 'انجام نشده',
+                'doing' => 'در حال انجام',
+                'done' => 'انجام شده',
+                'closed' => 'بسته شده',
+            ];
+            $oldLabel = $statusLabels[$oldStatus] ?? $oldStatus;
+            $newLabel = $statusLabels[$newStatus] ?? $newStatus;
+
+            $description = "وضعیت تسک '{$task->title}' از '{$oldLabel}' به '{$newLabel}' تغییر یافت";
+            ActivityLogger::log($task, 'update_status', $description);
+        }
     }
 
     /**

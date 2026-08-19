@@ -12,9 +12,6 @@ class ActivityController extends Controller
     public function index(Request $request)
     {
         $activities = Activity::with('user')
-            ->when($request->get('user_id'), function ($query, $userId) {
-                return $query->where('user_id', $userId);
-            })
             ->when($request->get('model'), function ($query, $model) {
                 return $query->where('model', $model);
             })
