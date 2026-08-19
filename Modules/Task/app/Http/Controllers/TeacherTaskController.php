@@ -351,7 +351,7 @@ class TeacherTaskController extends Controller
 
             // بروزرسانی وضعیت تسک
             $task = Task::find($validated['task_id']);
-            $this->updateTaskStatus($validated['task_id'], $classId);
+            $this->updateTaskStatus($validated['task_id'], $classId, $teacher->id);
 
             DB::commit();
 
@@ -364,7 +364,7 @@ class TeacherTaskController extends Controller
 
             $description = "ثبت نتایج وظیفه '{$taskTitle}' برای دانش‌آموزان: {$studentsList}";
 
-            ActivityLogger::log($task, 'store_results', $description);
+            ActivityLogger::log($task, 'store_results', $teacher->id, $description);
 
             return response()->json([
                 'success' => true,
@@ -449,7 +449,7 @@ class TeacherTaskController extends Controller
 
             // بروزرسانی وضعیت تسک
             $task = Task::find($validated['task_id']);
-            $this->updateTaskStatus($validated['task_id'], $assignment->class_id);
+            $this->updateTaskStatus($validated['task_id'], $assignment->class_id, $teacher->id);
 
             DB::commit();
 
@@ -458,7 +458,7 @@ class TeacherTaskController extends Controller
             $studentName = $student->full_name ?? 'نامشخص';
             $description = "ثبت نتیجه وظیفه '{$taskTitle}' برای دانش‌آموز {$studentName}";
 
-            ActivityLogger::log($task, 'store_result', $description);
+            ActivityLogger::log($task, 'store_result', $teacher->id, $description);
 
             return response()->json([
                 'success' => true,
@@ -476,7 +476,7 @@ class TeacherTaskController extends Controller
     /**
      * بروزرسانی وضعیت تسک بر اساس تعداد نتایج ثبت شده
      */
-    private function updateTaskStatus($taskId, $classId)
+    private function updateTaskStatus($taskId, $classId, $teacherId)
     {
         $task = Task::find($taskId);
         if (!$task) return;
@@ -513,7 +513,7 @@ class TeacherTaskController extends Controller
             $newLabel = $statusLabels[$newStatus] ?? $newStatus;
 
             $description = "وضعیت تسک '{$task->title}' از '{$oldLabel}' به '{$newLabel}' تغییر یافت";
-            ActivityLogger::log($task, 'update_status', $description);
+            ActivityLogger::log($task, 'update_status', $teacherId, $description);
         }
     }
 

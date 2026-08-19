@@ -65,7 +65,7 @@ class AuthController extends Controller
         $roles = $user->roles->pluck('slug')->toArray();
         if (in_array('teacher', $roles)) {
             $description = "ورود به سیستم توسط '{$user->full_name}'";
-            ActivityLogger::log($user, 'login', $description);
+            ActivityLogger::log($user, 'login', $user->id, $description);
         }
 
         return response()->json([
@@ -140,7 +140,7 @@ class AuthController extends Controller
             $roles = $user->roles->pluck('slug')->toArray();
             if (in_array('teacher', $roles)) {
                 $description = "ورود به سیستم توسط '{$user->full_name}'";
-                ActivityLogger::log($user, 'login', $description);
+                ActivityLogger::log($user, 'login', $user->id, $description);
             }
             return response()->json([
                 'success' => true,

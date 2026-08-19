@@ -480,7 +480,7 @@ class TaskController extends Controller
                 ]
             );
             $description = "ثبت  وظیفه '{$task->title}' توسط : {$task->creator->full_name}";
-            ActivityLogger::log($task, 'store_task', $description);
+            ActivityLogger::log($task, 'store_task', $request->user()->id, $description);
             // ثبت نوتیفیکیشن برای معلمان
             if (!empty($validated['assignments'])) {
                 foreach ($validated['assignments'] as $assignment) {
@@ -754,7 +754,7 @@ class TaskController extends Controller
                 ]
             );
             $description = "ویرایش  وظیفه '{$task->title}' توسط : {$task->creator->full_name}";
-            ActivityLogger::log($task, 'update_task', $description);
+            ActivityLogger::log($task, 'update_task', $maker->id, $description);
             return response()->json([
                 'success' => true,
                 'message' => 'وظیفه با موفقیت بروزرسانی شد' . ($typeChanged ? " و نوع آن تغییر کرد" : ""),
@@ -794,8 +794,9 @@ class TaskController extends Controller
 
         try {
             $taskTitle = $task->title;
+            $maker = $request->user();
             $description = "حذف  وظیفه '{$taskTitle}' توسط : {$task->creator->full_name}";
-            ActivityLogger::log($task, 'delete_task', $description);
+            ActivityLogger::log($task, 'delete_task', $maker->id, $description);
             // حذف cascade انجام میشه (با توجه به foreign key constraints)
             $task->delete();
 

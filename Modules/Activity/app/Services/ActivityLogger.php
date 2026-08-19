@@ -6,10 +6,10 @@ use Modules\Activity\Models\Activity;
 
 class ActivityLogger
 {
-    public static function log($model, $action, $description = null)
+    public static function log($model, $action, $userId, $description = null)
     {
         return Activity::create([
-            'user_id' => auth()->id(),
+            'user_id' => $userId,
             'model' => get_class($model),
             'model_id' => $model->id,
             'action' => $action,
