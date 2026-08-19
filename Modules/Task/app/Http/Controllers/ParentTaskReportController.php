@@ -6,9 +6,9 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Modules\Student\Models\Student;
 use Modules\Task\Models\TaskResults;
-use Modules\Task\Models\Message;
 use Modules\Users\Models\User;
 use Carbon\Carbon;
+use Modules\Message\Models\Message;
 
 class ParentTaskReportController extends Controller
 {
