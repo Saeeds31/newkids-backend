@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Modules\Task\Http\Controllers\ParentTaskReportController;
 use Modules\Task\Http\Controllers\TaskController;
 use Modules\Task\Http\Controllers\TeacherTaskController;
 
@@ -29,4 +30,12 @@ Route::middleware(['auth:sanctum'])->prefix('v1/teacher-tasks')->group(function 
     Route::get('/{taskId}/record', [TeacherTaskController::class, 'getTaskForRecording']);
     Route::post('/result', [TeacherTaskController::class, 'storeResult']); // تک دانش‌آموز
     Route::post('/results/bulk', [TeacherTaskController::class, 'storeBulkResults']);
+});
+
+Route::middleware(['auth:sanctum'])->prefix('v1/parent-reports')->group(function () {
+    // گزارش‌های ثبت شده
+    Route::get('/', [ParentTaskReportController::class, 'index']);
+    Route::get('/children', [ParentTaskReportController::class, 'getChildren']);
+    Route::get('/{id}', [ParentTaskReportController::class, 'show']);
+    Route::get('/child/{childId}/tasks', [ParentTaskReportController::class, 'getTasksForChild']);
 });
