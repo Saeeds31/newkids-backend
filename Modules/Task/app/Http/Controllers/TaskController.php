@@ -795,7 +795,7 @@ class TaskController extends Controller
         try {
             $taskTitle = $task->title;
             $description = "حذف  وظیفه '{$taskTitle}' توسط : {$task->creator->full_name}";
-            ActivityLogger::log($task, 'update_task', $description);
+            ActivityLogger::log($task, 'delete_task', $description);
             // حذف cascade انجام میشه (با توجه به foreign key constraints)
             $task->delete();
 
